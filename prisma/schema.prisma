@@ -1,0 +1,226 @@
+// Prisma schema for the hackathon evaluation system (Vercel + Neon serverless).
+//
+// Datasource uses Vercel's standard Postgres/Neon env vars:
+//   url       -> POSTGRES_PRISMA_URL      (pooled, PgBouncer; used at runtime)
+//   directUrl -> POSTGRES_URL_NON_POOLING (direct; used for migrations)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("POSTGRES_PRISMA_URL")
+  directUrl = env("POSTGRES_URL_NON_POOLING")
+}
+
+// ---------------------------------------------------------------------------
+// Auth / roles
+// ---------------------------------------------------------------------------
+
+enum Role {
+  ORGANIZER
+  TEAM
+}
+
+model User {
+  id           String  @id @default(cuid())
+  email        String  @unique
+  name         String?
+  passwordHash String
+  role         Role    @default(TEAM)
+
+  teamId String?
+  team   Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([teamId])
+}
+
+// ---------------------------------------------------------------------------
+// Domain
+// ---------------------------------------------------------------------------
+
+model Track {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  slug        String  @unique
+  description String?
+
+  teams   Team[]
+  rubrics Rubric[]
+
+  /// Set when the organizer publishes this track's leaderboard. While set,
+  /// scores are locked (no re-evaluation, no human-score edits) and the public
+  /// leaderboard at /leaderboard/[trackId] is visible.
+  publishedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Team {
+  id         String @id @default(cuid())
+  name       String
+  university String
+
+  trackId String
+  track   Track  @relation(fields: [trackId], references: [id], onDelete: Restrict)
+
+  users       User[]
+  submissions Submission[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name, trackId])
+  @@index([trackId])
+}
+
+model Submission {
+  id     String @id @default(cuid())
+  teamId String
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  repoUrl String
+  liveUrl String?
+
+  /// Public URL of the pitch deck stored in Vercel Blob.
+  pitchDeckBlobUrl String?
+
+  /// Parsed & validated manifest.yaml (install cmd, run cmd, port, env vars…).
+  manifest Json
+
+  /// Optional judge score entered by an organizer later (0..human_score
+  /// criterion's maxScore). Null until scored. Weighted into the final score
+  /// via the rubric's human_score criterion weight.
+  humanScore Float?
+
+  submittedAt DateTime @default(now())
+
+  evaluationJobs EvaluationJob[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([teamId])
+}
+
+// ---------------------------------------------------------------------------
+// Rubric definition
+// ---------------------------------------------------------------------------
+
+enum CheckType {
+  uptime
+  lighthouse_perf
+  lighthouse_a11y
+  responsiveness
+  build_success
+  code_quality
+  human_score
+}
+
+model Rubric {
+  id      String @id @default(cuid())
+  name    String
+  trackId String
+  track   Track  @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  criteria RubricCriterion[]
+
+  /// Set when the rubric is frozen (once evaluation starts for the track).
+  lockedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name, trackId])
+  @@index([trackId])
+}
+
+model RubricCriterion {
+  id       String @id @default(cuid())
+  rubricId String
+  rubric   Rubric @relation(fields: [rubricId], references: [id], onDelete: Cascade)
+
+  name      String
+  checkType CheckType
+  weight    Float
+
+  /// Automation config: thresholds, breakpoints, point values, etc.
+  scoringRules Json
+
+  results CriterionResult[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([rubricId])
+}
+
+// ---------------------------------------------------------------------------
+// Evaluation jobs (orchestrated by Inngest) & results
+// ---------------------------------------------------------------------------
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model EvaluationJob {
+  id           String     @id @default(cuid())
+  submissionId String
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  status JobStatus @default(QUEUED)
+
+  /// Inngest run id for this evaluation (correlates with the durable function).
+  inngestRunId String?
+
+  /// E2B sandbox id for the in-flight run; used to guarantee teardown even on
+  /// terminal failure (read by the function's onFailure handler).
+  sandboxId String?
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  error       String?
+
+  results CriterionResult[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([submissionId])
+  @@index([status])
+  @@index([inngestRunId])
+}
+
+model CriterionResult {
+  id    String        @id @default(cuid())
+  jobId String
+  job   EvaluationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  criterionId String
+  criterion   RubricCriterion @relation(fields: [criterionId], references: [id], onDelete: Cascade)
+
+  /// Raw measured value (e.g. lighthouse perf = 87, uptime ms = 240).
+  rawMetric Float?
+
+  /// Normalized 0-100 score after applying scoringRules.
+  computedScore Float?
+
+  /// Full evidence: logs, screenshots URLs, sub-metrics, notes.
+  details Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([jobId, criterionId])
+  @@index([jobId])
+  @@index([criterionId])
+}
