@@ -41,7 +41,7 @@ export default async function PublicLeaderboardPage({
     <main className="mx-auto max-w-3xl px-6 py-12">
       <header className="mb-8 text-center">
         <p className="text-sm uppercase tracking-wide text-indigo-600">
-          Hackathon Leaderboard
+          ScoreLab Leaderboard
         </p>
         <h1 className="mt-1 text-3xl font-bold">{board.trackName}</h1>
         <p className="mt-1 text-xs text-gray-500">

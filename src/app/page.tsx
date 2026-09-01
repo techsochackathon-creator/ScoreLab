@@ -9,7 +9,7 @@ export default async function Home() {
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-8 px-6 py-16">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">
-          Hackathon Evaluation System
+          ScoreLab
         </h1>
         <p className="mt-3 text-gray-600 dark:text-gray-400">
           Teams submit their projects (repo, live URL, pitch deck, run manifest);

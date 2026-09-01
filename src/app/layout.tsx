@@ -3,7 +3,7 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Hackathon Evaluation System",
+  title: "ScoreLab",
   description: "Automated hackathon submission & evaluation platform",
 };
 
