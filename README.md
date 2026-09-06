@@ -58,7 +58,6 @@ npm run dev
 | Role      | Email                 | Password     |
 | --------- | --------------------- | ------------ |
 | Organizer | organizer@example.com | organizer123 |
-| Team      | team@example.com      | team123      |
 
 Sign in as the team → **/submit**.
 
