@@ -1,131 +1,64 @@
-import { PrismaClient, CheckType } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
+const ANCHORS = [
+  { score: 1, label: "Poor — largely missing or seriously deficient." },
+  { score: 2, label: "Below average — present but weak, with notable gaps." },
+  { score: 3, label: "Adequate — meets basic expectations." },
+  { score: 4, label: "Strong — clearly above average and well executed." },
+  { score: 5, label: "Excellent — exemplary, best-in-class for a hackathon." },
+];
+
+const CRITERIA = [
+  { name: "Code Quality", description: "Readability, consistency, naming, structure of the code; absence of obvious smells.", weight: 20 },
+  { name: "Documentation", description: "README clarity, setup instructions, inline comments, and overall explanation of the project.", weight: 20 },
+  { name: "Functionality / Completeness", description: "How complete and working the project appears based on the evidence; are the core features implemented?", weight: 20 },
+  { name: "Technical Complexity", description: "Ambition and sophistication of the technical approach relative to a hackathon timeframe.", weight: 20 },
+  { name: "Project Structure", description: "Sensible file/folder organization, separation of concerns, and maintainability.", weight: 20 },
+];
+
 async function main() {
-  const web = await prisma.track.upsert({
-    where: { slug: "web" },
-    update: {},
-    create: { name: "Web", slug: "web", description: "Web applications" },
-  });
-  await prisma.track.upsert({
-    where: { slug: "ai" },
-    update: {},
-    create: { name: "AI/ML", slug: "ai", description: "AI & ML projects" },
-  });
-
-  const rubric = await prisma.rubric.upsert({
-    where: { name_trackId: { name: "Web Default Rubric", trackId: web.id } },
-    update: {},
-    create: { name: "Web Default Rubric", trackId: web.id },
-  });
-
-  const criteria: Array<{
-    name: string;
-    checkType: CheckType;
-    weight: number;
-    scoringRules: object;
-  }> = [
-    {
-      name: "Uptime",
-      checkType: CheckType.uptime,
-      weight: 0.15,
-      scoringRules: { passPoints: 100, failPoints: 0, pings: 3, timeoutMs: 5000 },
-    },
-    {
-      name: "Lighthouse Performance",
-      checkType: CheckType.lighthouse_perf,
-      weight: 0.2,
-      scoringRules: { mode: "raw", maxPoints: 100 },
-    },
-    {
-      name: "Lighthouse Accessibility",
-      checkType: CheckType.lighthouse_a11y,
-      weight: 0.15,
-      scoringRules: { mode: "raw", maxPoints: 100 },
-    },
-    {
-      name: "Responsiveness",
-      checkType: CheckType.responsiveness,
-      weight: 0.1,
-      scoringRules: { viewports: [375, 768, 1440], pointsPerViewport: 33.3 },
-    },
-    {
-      name: "Build Success",
-      checkType: CheckType.build_success,
-      weight: 0.15,
-      scoringRules: { passPoints: 100, failPoints: 0 },
-    },
-    {
-      name: "Code Quality",
-      checkType: CheckType.code_quality,
-      weight: 0.1,
-      scoringRules: {
-        subChecks: [
-          { key: "readme", label: "README present", enabled: true, points: 30 },
-          { key: "tests", label: "Tests present", enabled: true, points: 40 },
-          {
-            key: "commits",
-            label: "Min commits per teammate",
-            enabled: true,
-            points: 30,
-            minCommitsPerTeammate: 3,
-          },
-        ],
-      },
-    },
-    {
-      name: "Judge Score",
-      checkType: CheckType.human_score,
-      weight: 0.15,
-      scoringRules: { maxScore: 10 },
-    },
-  ];
-
-  for (const c of criteria) {
-    const existing = await prisma.rubricCriterion.findFirst({
-      where: { rubricId: rubric.id, name: c.name },
-    });
-    if (!existing) {
-      await prisma.rubricCriterion.create({ data: { rubricId: rubric.id, ...c } });
-    }
-  }
-
-  const organizerPass = await bcrypt.hash("organizer123", 10);
+  // Organizer login.
+  const passwordHash = await bcrypt.hash("organizer123", 10);
   await prisma.user.upsert({
     where: { email: "organizer@example.com" },
     update: {},
-    create: {
-      email: "organizer@example.com",
-      name: "Lead Organizer",
-      passwordHash: organizerPass,
-      role: "ORGANIZER",
-    },
+    create: { email: "organizer@example.com", name: "Lead Organizer", passwordHash, role: "ORGANIZER" },
   });
 
-  const team = await prisma.team.upsert({
-    where: { name_trackId: { name: "Team Rocket", trackId: web.id } },
-    update: {},
-    create: { name: "Team Rocket", university: "State University", trackId: web.id },
-  });
+  // Default rubric (only if none exists).
+  const existing = await prisma.rubric.findFirst();
+  if (!existing) {
+    await prisma.rubric.create({
+      data: {
+        name: "Default Rubric",
+        criteria: {
+          create: CRITERIA.map((c, i) => ({
+            name: c.name,
+            description: c.description,
+            weight: c.weight,
+            scaleMax: 5,
+            anchors: ANCHORS,
+            order: i,
+          })),
+        },
+      },
+    });
+  }
 
-  const teamPass = await bcrypt.hash("team123", 10);
-  await prisma.user.upsert({
-    where: { email: "team@example.com" },
-    update: {},
-    create: {
-      email: "team@example.com",
-      name: "Team Rocket Captain",
-      passwordHash: teamPass,
-      role: "TEAM",
-      teamId: team.id,
-    },
-  });
+  // Demo teams.
+  const teams = [
+    { teamCode: "T01", name: "Rockets", university: "State University", track: "Web", memberNames: ["Ada Lovelace", "Alan Turing"] },
+    { teamCode: "T02", name: "Neon Owls", university: "Tech Institute", track: "Web", memberNames: ["Grace Hopper"] },
+    { teamCode: "T03", name: "DeepThinkers", university: "State University", track: "AI/ML", memberNames: ["Geoffrey H.", "Yoshua B."] },
+  ];
+  for (const t of teams) {
+    await prisma.team.upsert({ where: { teamCode: t.teamCode }, update: {}, create: t });
+  }
 
-  console.log("Seeded. Logins:");
-  console.log("  organizer@example.com / organizer123");
-  console.log("  team@example.com / team123");
+  console.log("Seeded. Organizer login: organizer@example.com / organizer123");
 }
 
 main()

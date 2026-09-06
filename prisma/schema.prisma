@@ -1,8 +1,8 @@
-// Prisma schema for the hackathon evaluation system (Vercel + Neon serverless).
+// Prisma schema — AI-based hackathon evaluation (Next.js + Vercel + Neon).
 //
 // Datasource uses Vercel's standard Postgres/Neon env vars:
-//   url       -> POSTGRES_PRISMA_URL      (pooled, PgBouncer; used at runtime)
-//   directUrl -> POSTGRES_URL_NON_POOLING (direct; used for migrations)
+//   url       -> POSTGRES_PRISMA_URL      (pooled; runtime)
+//   directUrl -> POSTGRES_URL_NON_POOLING (direct; migrations)
 
 generator client {
   provider = "prisma-client-js"
@@ -15,144 +15,298 @@ datasource db {
 }
 
 // ---------------------------------------------------------------------------
-// Auth / roles
+// Auth (organizer login)
 // ---------------------------------------------------------------------------
 
 enum Role {
   ORGANIZER
-  TEAM
 }
 
 model User {
-  id           String  @id @default(cuid())
-  email        String  @unique
+  id           String @id @default(cuid())
+  email        String @unique
   name         String?
   passwordHash String
-  role         Role    @default(TEAM)
-
-  teamId String?
-  team   Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([teamId])
-}
-
-// ---------------------------------------------------------------------------
-// Domain
-// ---------------------------------------------------------------------------
-
-model Track {
-  id          String  @id @default(cuid())
-  name        String  @unique
-  slug        String  @unique
-  description String?
-
-  teams   Team[]
-  rubrics Rubric[]
-
-  /// Set when the organizer publishes this track's leaderboard. While set,
-  /// scores are locked (no re-evaluation, no human-score edits) and the public
-  /// leaderboard at /leaderboard/[trackId] is visible.
-  publishedAt DateTime?
+  role         Role   @default(ORGANIZER)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+// ---------------------------------------------------------------------------
+// Teams
+// ---------------------------------------------------------------------------
 
 model Team {
-  id         String @id @default(cuid())
+  id         String   @id @default(cuid())
+  teamCode   String   @unique
   name       String
   university String
+  track      String
+  memberNames String[]
 
-  trackId String
-  track   Track  @relation(fields: [trackId], references: [id], onDelete: Restrict)
+  // Optional project profile (shown on the team detail page).
+  projectTitle       String?
+  projectDescription String?
+  technologies       String[] @default([])
+  /// Canonical repository for batch evaluation.
+  repoUrl            String?
 
-  users       User[]
-  submissions Submission[]
+  submissions      Submission[]
+  evaluationEvents EvaluationEvent[]
+  batchJobs        BatchJob[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([name, trackId])
-  @@index([trackId])
+  @@index([track])
 }
 
-model Submission {
-  id     String @id @default(cuid())
-  teamId String
-  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+/// Immutable evaluation version/run record. Append-only: every evaluation run
+/// (including re-runs and gated/failed outcomes) creates a NEW row and never
+/// overwrites an older one. Preserves exactly what produced each result for
+/// auditability. Also powers the history timeline and leaderboard trend deltas.
+model EvaluationEvent {
+  id           String      @id @default(cuid()) // evaluation ID
+  teamId       String
+  team         Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  submissionId String?
+  submission   Submission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
 
-  repoUrl String
-  liveUrl String?
+  repoUrl           String?
+  commitSha         String?
+  evidenceFetchedAt DateTime?
 
-  /// Public URL of the pitch deck stored in Vercel Blob.
-  pitchDeckBlobUrl String?
+  rubricVersion String?
+  promptVersion String?
+  model         String?
+  modelConfig   Json?
 
-  /// Parsed & validated manifest.yaml (install cmd, run cmd, port, env vars…).
-  manifest Json
+  status     SubmissionStatus?
+  totalScore Float? // final score for completed runs (kept for trend readers)
+  finalScore Float?
+  confidence Float?
+  flags      String[] @default([])
+  error      String?
 
-  /// Optional judge score entered by an organizer later (0..human_score
-  /// criterion's maxScore). Null until scored. Weighted into the final score
-  /// via the rubric's human_score criterion weight.
-  humanScore Float?
+  /// Immutable per-criterion snapshot: score, reasoning, confidence, evidenceRefs, weight.
+  criterionScores   Json?
+  rawEvidence       Json?
+  sanitizedEvidence Json?
 
-  submittedAt DateTime @default(now())
-
-  evaluationJobs EvaluationJob[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
 
   @@index([teamId])
+  @@index([submissionId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 // ---------------------------------------------------------------------------
-// Rubric definition
+// Batch evaluation (job-based engine)
 // ---------------------------------------------------------------------------
 
-enum CheckType {
-  uptime
-  lighthouse_perf
-  lighthouse_a11y
-  responsiveness
-  build_success
-  code_quality
-  human_score
+enum BatchStatus {
+  PENDING
+  RUNNING
+  PAUSED
+  COMPLETED
+  CANCELLED
 }
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  REVIEW_REQUIRED
+  CANCELLED
+}
+
+/// A single batch run that evaluates many teams concurrently.
+model BatchRun {
+  id          String      @id @default(cuid())
+  status      BatchStatus @default(PENDING)
+  concurrency Int         @default(3)
+  totalJobs   Int         @default(0)
+  createdBy   String?     // userId who triggered the batch
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  jobs BatchJob[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+/// One team evaluation job inside a batch run.
+model BatchJob {
+  id         String    @id @default(cuid())
+  batchRunId String
+  batchRun   BatchRun  @relation(fields: [batchRunId], references: [id], onDelete: Cascade)
+
+  teamId       String
+  team         Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  submissionId String?   // created when the job starts
+
+  status     JobStatus @default(QUEUED)
+  attempt    Int       @default(0)
+  maxRetries Int       @default(2)
+  error      String?
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([batchRunId, teamId])  // one job per team per batch
+  @@index([batchRunId])
+  @@index([teamId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Evaluation runs (lifecycle: DRAFT → EVALUATING → FINALIZED → PUBLISHED)
+// ---------------------------------------------------------------------------
+
+enum EvalRunStatus {
+  DRAFT
+  EVALUATING
+  FINALIZED
+  PUBLISHED
+}
+
+/// An evaluation run groups a set of team evaluations into a single versioned,
+/// finalizable, and publishable unit. Only a PUBLISHED run is visible on the
+/// public leaderboard.
+model EvalRun {
+  id          String        @id @default(cuid())
+  name        String        @default("Evaluation Run")
+  status      EvalRunStatus @default(DRAFT)
+  createdBy   String?
+
+  /// Snapshot of the ranking at finalization time. Immutable once written.
+  /// JSON: Array<{ teamId, teamName, university, track, totalScore, rank, confidence, flags, model, promptVersion, rubricVersion, evaluatedAt }>
+  snapshot    Json?
+
+  /// Provenance captured at finalization.
+  rubricVersion  String?
+  promptVersion  String?
+  modelVersion   String?
+
+  /// Total teams in this run (set at finalization).
+  totalTeams  Int @default(0)
+
+  /// If the organizer confirmed finalization with unresolved issues.
+  forcedFinalization Boolean @default(false)
+  finalizationNote   String?
+
+  finalizedAt  DateTime?
+  publishedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Tie-break resolution
+// ---------------------------------------------------------------------------
+
+enum TieBreakMethod {
+  CRITERION_HIERARCHY   // resolved by comparing criterion scores in priority order
+  SECONDARY_EVALUATION  // resolved by a secondary AI tie-break evaluation
+  ORGANIZER_DECISION    // resolved manually by the organizer
+  UNRESOLVED            // tie could not be resolved automatically
+}
+
+/// Configurable tie-break criterion priority order.
+/// If absent, the default is criterion `order` field ascending.
+model TieBreakConfig {
+  id         String   @id @default(cuid())
+
+  /// Ordered array of criterion IDs — highest priority first.
+  /// JSON: string[]
+  priorityOrder Json
+
+  /// Label for this configuration.
+  name       String   @default("Default tie-break priority")
+
+  createdBy  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+/// Immutable audit record for every tie-resolution decision.
+/// One row per pair of teams whose tie was resolved (or flagged).
+model TieBreakAudit {
+  id          String          @id @default(cuid())
+  evalRunId   String
+
+  /// The teams involved in this tie group.
+  tiedTeamIds String[]
+  /// The final score that was tied.
+  tiedScore   Float
+
+  /// How the tie was resolved.
+  method      TieBreakMethod
+  /// Which criterion or secondary eval broke the tie (null for organizer/unresolved).
+  resolvedBy  String?
+  /// Human-readable explanation of the resolution chain.
+  reasoning   String
+
+  /// For SECONDARY_EVALUATION: the secondary eval results per team.
+  /// JSON: Array<{ teamId, teamName, innovation, realWorldUsefulness, aiIntegrationQuality, projectImpact, reasoning, evidenceRefs, tieBreakScore }>
+  secondaryResults Json?
+
+  /// For ORGANIZER_DECISION: who decided and why.
+  organizerNote String?
+  decidedBy     String?
+
+  /// Final ranking order for the tied teams (teamId[]).
+  /// JSON: string[]
+  resolvedOrder Json
+
+  createdAt DateTime @default(now())
+
+  @@index([evalRunId])
+}
+
+// ---------------------------------------------------------------------------
+// Rubric (single, editable)
+// ---------------------------------------------------------------------------
 
 model Rubric {
-  id      String @id @default(cuid())
-  name    String
-  trackId String
-  track   Track  @relation(fields: [trackId], references: [id], onDelete: Cascade)
-
-  criteria RubricCriterion[]
-
-  /// Set when the rubric is frozen (once evaluation starts for the track).
-  lockedAt DateTime?
+  id       String      @id @default(cuid())
+  name     String      @default("Default Rubric")
+  criteria Criterion[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  @@unique([name, trackId])
-  @@index([trackId])
 }
 
-model RubricCriterion {
-  id       String @id @default(cuid())
-  rubricId String
-  rubric   Rubric @relation(fields: [rubricId], references: [id], onDelete: Cascade)
+model Criterion {
+  id          String @id @default(cuid())
+  rubricId    String
+  rubric      Rubric @relation(fields: [rubricId], references: [id], onDelete: Cascade)
 
-  name      String
-  checkType CheckType
-  weight    Float
+  name        String
+  description String
+  /// Integer percentage; all criteria in a rubric must sum to 100.
+  weight      Int
+  /// Top of the scoring scale (anchors are 1..scaleMax).
+  scaleMax    Int    @default(5)
+  /// JSON array of { score:Int, label:String } — anchor text per scale point.
+  anchors     Json
+  order       Int    @default(0)
 
-  /// Automation config: thresholds, breakpoints, point values, etc.
-  scoringRules Json
-
-  results CriterionResult[]
+  scores CriterionScore[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -161,66 +315,67 @@ model RubricCriterion {
 }
 
 // ---------------------------------------------------------------------------
-// Evaluation jobs (orchestrated by Inngest) & results
+// Submissions & AI scores
 // ---------------------------------------------------------------------------
 
-enum JobStatus {
-  QUEUED
-  RUNNING
-  COMPLETED
+enum SubmissionStatus {
+  PENDING
+  EVALUATING
+  EVALUATED
   FAILED
-  CANCELLED
+  REVIEW_REQUIRED
 }
 
-model EvaluationJob {
+model Submission {
+  id      String           @id @default(cuid())
+  teamId  String
+  team    Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  repoUrl String
+  status  SubmissionStatus @default(PENDING)
+  error   String?
+
+  /// Weighted total 0..100 from criterion scores (before the quality gate).
+  totalScore  Float?
+  /// Final score after the consistency/quality check (null if the gate failed).
+  finalScore  Float?
+  /// 0..1 evidence-sufficiency confidence (directness of evidence, NOT model
+  /// certainty; never multiplied into scores).
+  confidence  Float?
+  /// Quality flags raised during the consistency check (e.g. "no-readme").
+  flags       String[] @default([])
+  /// AI model id used for the evaluation.
+  model       String?
+  /// Snapshot of the GitHub evidence bundle summary (for transparency).
+  evidence    Json?
+  evaluatedAt DateTime?
+
+  scores CriterionScore[]
+  events EvaluationEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([teamId])
+  @@index([status])
+}
+
+model CriterionScore {
   id           String     @id @default(cuid())
   submissionId String
   submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
-  status JobStatus @default(QUEUED)
-
-  /// Inngest run id for this evaluation (correlates with the durable function).
-  inngestRunId String?
-
-  /// E2B sandbox id for the in-flight run; used to guarantee teardown even on
-  /// terminal failure (read by the function's onFailure handler).
-  sandboxId String?
-
-  startedAt   DateTime?
-  completedAt DateTime?
-  error       String?
-
-  results CriterionResult[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([submissionId])
-  @@index([status])
-  @@index([inngestRunId])
-}
-
-model CriterionResult {
-  id    String        @id @default(cuid())
-  jobId String
-  job   EvaluationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
-
   criterionId String
-  criterion   RubricCriterion @relation(fields: [criterionId], references: [id], onDelete: Cascade)
+  criterion   Criterion @relation(fields: [criterionId], references: [id], onDelete: Cascade)
 
-  /// Raw measured value (e.g. lighthouse perf = 87, uptime ms = 240).
-  rawMetric Float?
-
-  /// Normalized 0-100 score after applying scoringRules.
-  computedScore Float?
-
-  /// Full evidence: logs, screenshots URLs, sub-metrics, notes.
-  details Json?
+  /// 1..scaleMax
+  score     Int
+  reasoning String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([jobId, criterionId])
-  @@index([jobId])
+  @@unique([submissionId, criterionId])
+  @@index([submissionId])
   @@index([criterionId])
 }
