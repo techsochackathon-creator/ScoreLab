@@ -48,12 +48,17 @@ function knownIdentifierTerms(ctx: IdentityContext): { re: RegExp; label: string
     terms.push({ re: new RegExp(`\\b${escapeRe(s)}\\b`, "i"), label });
   };
   add(ctx.ownerLogin, "repository owner identity");
+  // Only flag full participant names (≥2 words), not individual tokens.
+  // Short tokens like first names cause too many false positives in code.
   for (const m of ctx.memberNames ?? []) {
-    add(m, "participant name");
-    for (const tok of m.split(/\s+/)) add(tok, "participant name", 3);
+    if (m.trim().split(/\s+/).length >= 2) {
+      add(m, "participant name");
+    }
   }
   add(ctx.university, "university name");
-  add(ctx.teamName, "team name");
+  // Team name is NOT checked — teams commonly include their name in their
+  // repo (README, package.json, comments). The anonymizer redacts it from
+  // the prompt sent to the model, but its presence in raw evidence is expected.
   return terms;
 }
 
