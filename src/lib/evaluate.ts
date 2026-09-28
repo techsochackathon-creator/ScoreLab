@@ -8,6 +8,7 @@ import { containsIdentityLeakage } from "@/lib/identityGate";
 import { assessEvidence } from "@/lib/evidenceQuality";
 import { validateAiOutput, validateRubricWeights } from "@/lib/validateAiOutput";
 import { buildRunRecord, rubricVersionHash, type CriterionScoreSnapshot } from "@/lib/evaluationVersion";
+import { cleanupFailedRuns } from "@/lib/cleanupFailedRuns";
 import type { Prisma, SubmissionStatus } from "@prisma/client";
 
 /**
@@ -118,6 +119,7 @@ export async function runEvaluation(submissionId: string): Promise<void> {
       const error = `Rubric weights total ${weightCheck.sum}%, but must total 100%. Fix the rubric before evaluating.`;
       await mirror(submissionId, { status: "REVIEW_REQUIRED", flags: ["INVALID_RUBRIC"], error });
       await recordRun("REVIEW_REQUIRED", { flags: ["INVALID_RUBRIC"], error });
+      await cleanupFailedRuns(submission!.teamId);
       return;
     }
 
@@ -143,6 +145,7 @@ export async function runEvaluation(submissionId: string): Promise<void> {
         evidence: summarize(rawEvidence, { anonymization, raw: rawEvidence, sanitized: anon.sanitized }),
       });
       await recordRun("REVIEW_REQUIRED", { flags: ["IDENTITY_LEAKAGE"], error });
+      await cleanupFailedRuns(submission!.teamId);
       return;
     }
 
@@ -162,6 +165,7 @@ export async function runEvaluation(submissionId: string): Promise<void> {
         evidence: summarize(rawEvidence, { anonymization, completeness, raw: rawEvidence, sanitized: anon.sanitized }),
       });
       await recordRun("REVIEW_REQUIRED", { flags: ["INSUFFICIENT_EVIDENCE"], error });
+      await cleanupFailedRuns(submission!.teamId);
       return;
     }
 
@@ -201,6 +205,7 @@ export async function runEvaluation(submissionId: string): Promise<void> {
         }),
       });
       await recordRun("REVIEW_REQUIRED", { flags: ["INVALID_AI_OUTPUT"], error });
+      await cleanupFailedRuns(submission!.teamId);
       return;
     }
 
@@ -215,6 +220,7 @@ export async function runEvaluation(submissionId: string): Promise<void> {
       const error = `Score calculation failed: ${calc.errors.join(" ")}`;
       await mirror(submissionId, { status: "REVIEW_REQUIRED", flags: ["SCORE_CALCULATION_ERROR"], error });
       await recordRun("REVIEW_REQUIRED", { flags: ["SCORE_CALCULATION_ERROR"], error });
+      await cleanupFailedRuns(submission!.teamId);
       return;
     }
     const total = calc.finalScore;
@@ -274,10 +280,14 @@ export async function runEvaluation(submissionId: string): Promise<void> {
 
     // Append the immutable version record (never overwrites prior runs).
     await recordRun("EVALUATED", { finalScore: total, flags });
+
+    // Success: clean up any old failed/review-required records for this team.
+    await cleanupFailedRuns(submission!.teamId);
   } catch (e) {
     const error = (e as Error).message.slice(0, 500);
     await mirror(submissionId, { status: "FAILED", error });
     await recordRun("FAILED", { error });
+    await cleanupFailedRuns(submission!.teamId);
   }
 }
 

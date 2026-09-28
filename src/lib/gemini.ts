@@ -4,13 +4,15 @@ import { parseAnchors } from "@/lib/scoring";
 /**
  * Single-call AI evaluation against the rubric, via the Google Gemini REST API.
  *
- * - Model defaults to gemini-3.6-flash (override with GEMINI_MODEL).
+ * - Model defaults to gemini-2.0-flash (override with GEMINI_MODEL).
  * - temperature 0 for deterministic scoring.
  * - Structured output enforced with responseSchema + JSON mime type.
  * - The system prompt marks ALL repo content as untrusted data.
+ *
+ * Free tier: 15 requests/minute on gemini-2.0-flash via aistudio.google.com.
  */
 
-export const EVAL_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+export const EVAL_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 
 /** Bump when the evaluation prompt/contract changes. Recorded on every run. */
@@ -145,12 +147,19 @@ export async function evaluateWithGemini(
   evidence: RepoEvidence,
 ): Promise<{ rawText: string; model: string }> {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("GEMINI_API_KEY is not set.");
+  if (!apiKey) throw new Error("GEMINI_API_KEY is not set — get a free key at aistudio.google.com/apikey and add it to .env.local.");
 
-  const url = `${ENDPOINT}/${EVAL_MODEL}:generateContent?key=${apiKey}`;
+  // Auth keys (AQ.xxx) use x-goog-api-key header; standard keys (AIzaSy) use ?key= param.
+  const isAuthKey = apiKey.startsWith("AQ.");
+  const url = isAuthKey
+    ? `${ENDPOINT}/${EVAL_MODEL}:generateContent`
+    : `${ENDPOINT}/${EVAL_MODEL}:generateContent?key=${apiKey}`;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (isAuthKey) headers["x-goog-api-key"] = apiKey;
+
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     signal: AbortSignal.timeout(60_000),
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },

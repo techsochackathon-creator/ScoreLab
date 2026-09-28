@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { homePathForRole } from "@/lib/roles";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
 export default async function Home() {
   const session = await getServerSession(authOptions);
+  const home = homePathForRole(session?.user?.role);
 
   return (
     <div className="min-h-screen bg-bg">
@@ -30,8 +32,8 @@ export default async function Home() {
           </p>
 
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link href={session ? "/organizer/dashboard" : "/login"} className="btn-primary">
-              {session ? "Open dashboard" : "Organizer sign in"}
+            <Link href={home ?? "/login"} className="btn-primary">
+              {home ? "Open dashboard" : "Sign in"}
             </Link>
             <Link href="/leaderboard" className="btn-ghost">View leaderboard</Link>
           </div>

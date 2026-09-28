@@ -19,11 +19,9 @@ const NAV: NavItem[] = [
   { href: "/organizer/teams", label: "Teams", icon: "teams" },
   { href: "/organizer/evaluations", label: "Evaluations", icon: "evaluations" },
   { href: "/organizer/batch", label: "Batch", icon: "spark" },
-  { href: "/organizer/runs", label: "Runs", icon: "runs" },
   { href: "/organizer/rubric", label: "Rubric", icon: "rubric" },
   { href: "/leaderboard", label: "Leaderboard", icon: "leaderboard" },
   { href: "/organizer/analytics", label: "Analytics", icon: "analytics" },
-  { href: "/organizer/integrity", label: "Integrity", icon: "integrity" },
 ];
 
 function Logo() {

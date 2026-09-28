@@ -56,11 +56,9 @@ export function CommandPalette() {
       { id: "teams", label: "Go to Teams", icon: "teams", run: () => go("/organizer/teams") },
       { id: "evaluate", label: "Start an evaluation", icon: "evaluations", run: () => go("/organizer/evaluations") },
       { id: "batch", label: "Run batch evaluation", icon: "spark", run: () => go("/organizer/batch") },
-      { id: "runs", label: "Manage evaluation runs", icon: "runs", run: () => go("/organizer/runs") },
       { id: "rubric", label: "Edit rubric", icon: "rubric", run: () => go("/organizer/rubric") },
       { id: "leaderboard", label: "Open leaderboard", icon: "leaderboard", run: () => go("/leaderboard") },
       { id: "analytics", label: "Open analytics", icon: "analytics", run: () => go("/organizer/analytics") },
-      { id: "integrity", label: "Open integrity", icon: "integrity", run: () => go("/organizer/integrity") },
       { id: "settings", label: "Open settings", icon: "settings", run: () => go("/organizer/settings") },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps

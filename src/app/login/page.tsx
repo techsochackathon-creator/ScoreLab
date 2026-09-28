@@ -1,8 +1,9 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { signIn } from "next-auth/react";
+import { getSession, signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { homePathForRole } from "@/lib/roles";
 
 function LoginInner() {
   const router = useRouter();
@@ -19,9 +20,16 @@ function LoginInner() {
     setLoading(true);
     setError(null);
     const res = await signIn("credentials", { email, password, redirect: false });
+    if (res?.error) {
+      setLoading(false);
+      return setError("Invalid email or password.");
+    }
+    // Route by role; a role without its own area never falls through to /organizer.
+    const session = await getSession();
     setLoading(false);
-    if (res?.error) return setError("Invalid email or password.");
-    router.push("/organizer/dashboard");
+    const home = homePathForRole(session?.user?.role);
+    if (!home) return setError("Your account has no assigned role.");
+    router.push(home);
     router.refresh();
   }
 
@@ -42,7 +50,7 @@ function LoginInner() {
 
         <div className="card-raised p-6">
           <h1 className="text-xl font-bold text-ink">Sign in</h1>
-          <p className="mt-1 text-sm text-ink-3">Organizer access to the evaluation platform.</p>
+          <p className="mt-1 text-sm text-ink-3">Organizer and judge access to the evaluation platform.</p>
           <form onSubmit={onSubmit} className="mt-6 flex flex-col gap-4">
             <label>
               <span className="label">Email</span>

@@ -14,6 +14,7 @@ export default async function TeamsPage() {
     memberNames: t.memberNames,
     projectTitle: t.projectTitle,
     technologies: t.technologies,
+    repoUrl: t.repoUrl,
   }));
   return <TeamsManager initialTeams={rows} />;
 }

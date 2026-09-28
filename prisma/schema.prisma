@@ -20,6 +20,7 @@ datasource db {
 
 enum Role {
   ORGANIZER
+  JUDGE
 }
 
 model User {
