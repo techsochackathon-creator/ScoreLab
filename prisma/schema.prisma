@@ -34,6 +34,7 @@ model User {
   active       Boolean @default(true)
 
   judgeAssignments JudgeAssignment[]
+  judgeEvaluations JudgeEvaluation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -60,6 +61,58 @@ model JudgeAssignment {
   @@index([teamId])
 }
 
+enum JudgeEvaluationStatus {
+  DRAFT
+  SUBMITTED
+}
+
+/// One judge's manual evaluation of one team. Separate from the AI Submission
+/// pipeline. SUBMITTED evaluations are read-only (enforced in src/lib/judgeEvaluations.ts).
+model JudgeEvaluation {
+  id      String @id @default(cuid())
+  /// Restrict: keep evaluation history — disable judges instead of deleting them.
+  judgeId String
+  judge   User   @relation(fields: [judgeId], references: [id], onDelete: Restrict)
+  teamId  String
+  team    Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  status      JudgeEvaluationStatus @default(DRAFT)
+  /// Σ (score / scaleMax) × weight over all criteria, 0..100. Set on submit.
+  finalScore  Float?
+  submittedAt DateTime?
+
+  scores JudgeCriterionScore[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([judgeId, teamId])
+  @@index([teamId])
+  @@index([status])
+}
+
+/// A judge's score for one rubric criterion. criterionName/weight/scaleMax are
+/// snapshots taken when the evaluation starts. criterionId is deliberately NOT a
+/// foreign key: saving the rubric recreates Criterion rows, which must not
+/// delete judge scores.
+model JudgeCriterionScore {
+  id           String          @id @default(cuid())
+  evaluationId String
+  evaluation   JudgeEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+
+  criterionId   String
+  criterionName String
+  weight        Int
+  scaleMax      Int
+  /// 0..scaleMax; null until the judge enters it.
+  score         Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([evaluationId, criterionId])
+}
+
 // ---------------------------------------------------------------------------
 // Teams
 // ---------------------------------------------------------------------------
@@ -83,6 +136,7 @@ model Team {
   evaluationEvents EvaluationEvent[]
   batchJobs        BatchJob[]
   judgeAssignments JudgeAssignment[]
+  judgeEvaluations JudgeEvaluation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
