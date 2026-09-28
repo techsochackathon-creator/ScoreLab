@@ -2,6 +2,8 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { homePathForRole } from "@/lib/roles";
+import { prisma } from "@/lib/prisma";
+import { getActiveJudge } from "@/lib/judges";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { SignOutButton } from "@/components/SignOutButton";
 
@@ -9,6 +11,8 @@ export default async function JudgeLayout({ children }: { children: React.ReactN
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/login");
   if (session.user.role !== "JUDGE") redirect(homePathForRole(session.user.role) ?? "/login?error=forbidden");
+  // JWT sessions outlive a disable; re-check the account on every render.
+  if (!(await getActiveJudge(prisma, session.user.id))) redirect("/login?error=disabled");
 
   return (
     <div className="min-h-screen bg-bg">

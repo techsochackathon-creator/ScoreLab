@@ -3,7 +3,7 @@
 import { Suspense, useState } from "react";
 import { getSession, signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { homePathForRole } from "@/lib/roles";
+import { ACCOUNT_DISABLED, homePathForRole } from "@/lib/roles";
 
 function LoginInner() {
   const router = useRouter();
@@ -11,7 +11,11 @@ function LoginInner() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(
-    params.get("error") === "forbidden" ? "You don't have access to that page." : null,
+    params.get("error") === "forbidden"
+      ? "You don't have access to that page."
+      : params.get("error") === "disabled"
+        ? "This account has been disabled. Contact the organizer."
+        : null,
   );
   const [loading, setLoading] = useState(false);
 
@@ -22,7 +26,11 @@ function LoginInner() {
     const res = await signIn("credentials", { email, password, redirect: false });
     if (res?.error) {
       setLoading(false);
-      return setError("Invalid email or password.");
+      return setError(
+        res.error === ACCOUNT_DISABLED
+          ? "This account has been disabled. Contact the organizer."
+          : "Invalid email or password.",
+      );
     }
     // Route by role; a role without its own area never falls through to /organizer.
     const session = await getSession();

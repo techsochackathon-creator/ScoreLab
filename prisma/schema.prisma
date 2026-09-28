@@ -29,9 +29,35 @@ model User {
   name         String?
   passwordHash String
   role         Role   @default(ORGANIZER)
+  /// Disabled accounts cannot sign in. Only judges are toggled (organizer UI);
+  /// disabling never deletes assignments or evaluation history.
+  active       Boolean @default(true)
+
+  judgeAssignments JudgeAssignment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Judge assignments (manual judging — separate from AI evaluation)
+// ---------------------------------------------------------------------------
+
+/// A team a judge is allowed to see/score. Only users with role JUDGE are
+/// assigned (enforced in src/lib/judges.ts).
+model JudgeAssignment {
+  id      String @id @default(cuid())
+  /// Restrict: a judge with assignments cannot be hard-deleted — disable instead.
+  judgeId String
+  judge   User   @relation(fields: [judgeId], references: [id], onDelete: Restrict)
+  teamId  String
+  team    Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([judgeId, teamId])
+  @@index([judgeId])
+  @@index([teamId])
 }
 
 // ---------------------------------------------------------------------------
@@ -56,6 +82,7 @@ model Team {
   submissions      Submission[]
   evaluationEvents EvaluationEvent[]
   batchJobs        BatchJob[]
+  judgeAssignments JudgeAssignment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

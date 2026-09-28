@@ -32,6 +32,9 @@ export const Icon = {
   evaluations: (p: IconProps) => (
     <Base {...p}><path d="M3 12h4l2 5 4-12 2 7h6" /></Base>
   ),
+  judges: (p: IconProps) => (
+    <Base {...p}><circle cx="12" cy="7" r="3.5" /><path d="M5 21a7 7 0 0 1 14 0" /><path d="m9.5 16 1.8 1.8 3.2-3.3" /></Base>
+  ),
   rubric: (p: IconProps) => (
     <Base {...p}><path d="M8 6h13" /><path d="M8 12h13" /><path d="M8 18h13" /><circle cx="3.5" cy="6" r="1" /><circle cx="3.5" cy="12" r="1" /><circle cx="3.5" cy="18" r="1" /></Base>
   ),
