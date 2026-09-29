@@ -20,6 +20,7 @@ const NAV: NavItem[] = [
   { href: "/organizer/evaluations", label: "Evaluations", icon: "evaluations" },
   { href: "/organizer/batch", label: "Batch", icon: "spark" },
   { href: "/organizer/judges", label: "Judges", icon: "judges" },
+  { href: "/organizer/results", label: "Results", icon: "leaderboard" },
   { href: "/organizer/rubric", label: "Rubric", icon: "rubric" },
   { href: "/leaderboard", label: "Leaderboard", icon: "leaderboard" },
   { href: "/organizer/analytics", label: "Analytics", icon: "analytics" },

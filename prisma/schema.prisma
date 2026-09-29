@@ -113,6 +113,17 @@ model JudgeCriterionScore {
   @@unique([evaluationId, criterionId])
 }
 
+/// Whether the official (judge-score) results are public on /leaderboard.
+/// At most one row (`slot` is unique); unpublishing deletes it. Results are
+/// always computed live from submitted judge evaluations (src/lib/officialResults.ts).
+model ResultsPublication {
+  id            String   @id @default(cuid())
+  slot          String   @unique @default("OFFICIAL")
+  /// Organizer user id (plain string: the record outlives account changes).
+  publishedById String
+  publishedAt   DateTime @default(now())
+}
+
 // ---------------------------------------------------------------------------
 // Teams
 // ---------------------------------------------------------------------------

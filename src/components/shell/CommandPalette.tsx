@@ -57,6 +57,7 @@ export function CommandPalette() {
       { id: "evaluate", label: "Start an evaluation", icon: "evaluations", run: () => go("/organizer/evaluations") },
       { id: "batch", label: "Run batch evaluation", icon: "spark", run: () => go("/organizer/batch") },
       { id: "judges", label: "Manage judges", icon: "judges", run: () => go("/organizer/judges") },
+      { id: "results", label: "Open official results", icon: "leaderboard", run: () => go("/organizer/results") },
       { id: "rubric", label: "Edit rubric", icon: "rubric", run: () => go("/organizer/rubric") },
       { id: "leaderboard", label: "Open leaderboard", icon: "leaderboard", run: () => go("/leaderboard") },
       { id: "analytics", label: "Open analytics", icon: "analytics", run: () => go("/organizer/analytics") },
