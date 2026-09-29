@@ -1,10 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/Toast";
 import { EmptyState, SectionTitle } from "@/components/ui/misc";
 import { Icon } from "@/components/ui/icons";
+import { ProgressBar } from "@/components/ui/ProgressBar";
+import type { EvaluationProgress, EvaluationStatus } from "@/lib/judgeEvaluations";
+import { friendlyApiError } from "@/lib/uiErrors";
 
 export interface JudgeRow {
   id: string;
@@ -13,12 +16,33 @@ export interface JudgeRow {
   active: boolean;
   createdAt: string;
   teamIds: string[];
+  /** This judge's evaluation status for each assigned team. */
+  statusByTeam: Record<string, EvaluationStatus>;
+  progress: EvaluationProgress;
 }
 
 export interface TeamOption {
   id: string;
   teamCode: string;
   name: string;
+  /** How many judges this team is assigned to. */
+  judgeCount: number;
+}
+
+const EVAL_PILL: Record<EvaluationStatus, { label: string; pill: string }> = {
+  NOT_STARTED: { label: "Not started", pill: "status-queued" },
+  DRAFT: { label: "Draft", pill: "status-review" },
+  SUBMITTED: { label: "Submitted", pill: "status-completed" },
+};
+
+function EvalPill({ status }: { status: EvaluationStatus }) {
+  const p = EVAL_PILL[status];
+  return (
+    <span className={`status-pill ${p.pill}`}>
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: "currentColor" }} />
+      {p.label}
+    </span>
+  );
 }
 
 type NewJudge = { name: string; email: string; password: string };
@@ -29,12 +53,14 @@ async function send(url: string, method: string, body?: unknown) {
     method,
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
-  });
+  }).catch(() => null);
+  if (!res) return { ok: false, error: "Network error. Check your connection and try again." };
   const data = await res.json().catch(() => ({}));
-  return { ok: res.ok, error: (data.error as string | undefined) ?? "Request failed" };
+  return { ok: res.ok, error: friendlyApiError(res.status, data.error as string | undefined, "Request failed") };
 }
 
-export function JudgesManager({ judges, teams }: { judges: JudgeRow[]; teams: TeamOption[] }) {
+/** `children`: the server-rendered overall judging-progress panel, shown under the header. */
+export function JudgesManager({ judges, teams, finalized, children }: { judges: JudgeRow[]; teams: TeamOption[]; finalized: boolean; children?: ReactNode }) {
   const router = useRouter();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
@@ -73,6 +99,8 @@ export function JudgesManager({ judges, teams }: { judges: JudgeRow[]; teams: Te
         </button>
       </header>
 
+      {children}
+
       {adding && (
         <div className="card mb-4 p-4">
           <h2 className="mb-3 text-sm font-semibold text-ink">New judge</h2>
@@ -99,7 +127,7 @@ export function JudgesManager({ judges, teams }: { judges: JudgeRow[]; teams: Te
                 <button
                   key={j.id}
                   onClick={() => setSelectedId(j.id)}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-2"
+                  className="flex w-full flex-wrap items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-2"
                   style={j.id === selectedId ? { background: "var(--surface-2)" } : undefined}
                   aria-current={j.id === selectedId}
                 >
@@ -108,15 +136,22 @@ export function JudgesManager({ judges, teams }: { judges: JudgeRow[]; teams: Te
                     <div className="truncate text-xs text-ink-3">{j.email}</div>
                   </div>
                   <ActivePill active={j.active} />
-                  <span className="nums w-16 text-right text-xs text-ink-2">
-                    <span className="font-semibold text-ink">{j.teamIds.length}</span> team{j.teamIds.length === 1 ? "" : "s"}
-                  </span>
+                  <div className="w-28 shrink-0 text-right">
+                    <div className="nums text-xs text-ink-2">
+                      <span className="font-semibold text-ink">{j.progress.submitted}</span>/{j.progress.assigned} submitted
+                      <span className="ml-1 text-ink-3">{j.progress.percent}%</span>
+                    </div>
+                    <ProgressBar value={j.progress.percent} height={4} className="mt-1" label={`${j.name || j.email}: evaluations submitted`} />
+                    <div className="mt-0.5 text-[10px] text-ink-3">
+                      {j.progress.draft} draft · {j.progress.notStarted} not started
+                    </div>
+                  </div>
                 </button>
               ))}
             </div>
           </div>
 
-          {selected && <JudgeDetail key={selected.id} judge={selected} teams={teams} />}
+          {selected && <JudgeDetail key={selected.id} judge={selected} teams={teams} finalized={finalized} />}
         </div>
       )}
     </div>
@@ -132,7 +167,7 @@ function ActivePill({ active }: { active: boolean }) {
   );
 }
 
-function JudgeDetail({ judge, teams }: { judge: JudgeRow; teams: TeamOption[] }) {
+function JudgeDetail({ judge, teams, finalized }: { judge: JudgeRow; teams: TeamOption[]; finalized: boolean }) {
   const router = useRouter();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
@@ -189,6 +224,9 @@ function JudgeDetail({ judge, teams }: { judge: JudgeRow; teams: TeamOption[] })
   }
 
   function unassign(t: TeamOption) {
+    if (!confirm(`Remove ${t.teamCode} (${t.name}) from ${judge.name || judge.email}?
+
+The judge will no longer see this team. This is only possible because they have not started evaluating it.`)) return;
     return run(`${base}/assignments?teamId=${encodeURIComponent(t.id)}`, "DELETE", undefined, `Removed ${t.teamCode}`);
   }
 
@@ -227,7 +265,14 @@ function JudgeDetail({ judge, teams }: { judge: JudgeRow; teams: TeamOption[] })
       </section>
 
       <section className="card p-5">
-        <SectionTitle right={<span className="nums text-xs text-ink-2">{assigned.length} assigned</span>}>Assigned teams</SectionTitle>
+        <SectionTitle right={
+          <span className="nums text-xs text-ink-2">
+            {assigned.length} assigned · {judge.progress.submitted} submitted · {judge.progress.draft} draft · {judge.progress.notStarted} not started
+          </span>
+        }>Assigned teams</SectionTitle>
+        {finalized && (
+          <p className="mb-2 text-xs" style={{ color: "var(--warn)" }}>Judging is finalized — assignments can no longer be changed.</p>
+        )}
         {assigned.length === 0 ? (
           <p className="py-3 text-sm text-ink-3">No teams assigned yet.</p>
         ) : (
@@ -236,7 +281,12 @@ function JudgeDetail({ judge, teams }: { judge: JudgeRow; teams: TeamOption[] })
               <li key={t.id} className="flex items-center gap-3 py-2">
                 <span className="mono w-28 shrink-0 text-xs text-ink-3">{t.teamCode}</span>
                 <span className="min-w-0 flex-1 truncate text-sm text-ink">{t.name}</span>
-                <button onClick={() => unassign(t)} disabled={busy} className="text-xs font-medium text-ink-2 hover:text-bad">Remove</button>
+                <EvalPill status={judge.statusByTeam[t.id] ?? "NOT_STARTED"} />
+                {!finalized && (judge.statusByTeam[t.id] ?? "NOT_STARTED") === "NOT_STARTED" ? (
+                  <button onClick={() => unassign(t)} disabled={busy} className="text-xs font-medium text-ink-2 hover:text-bad">Remove</button>
+                ) : !finalized ? (
+                  <span className="text-[11px] text-ink-3" title="The judge has started this evaluation, so the assignment is kept.">Kept</span>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -245,7 +295,9 @@ function JudgeDetail({ judge, teams }: { judge: JudgeRow; teams: TeamOption[] })
 
       <section className="card p-5">
         <SectionTitle>Add teams</SectionTitle>
-        {teams.length === assigned.length ? (
+        {finalized ? (
+          <p className="text-sm text-ink-3">Judging is finalized.</p>
+        ) : teams.length === assigned.length ? (
           <p className="text-sm text-ink-3">{teams.length === 0 ? "No teams exist yet." : "Every team is already assigned to this judge."}</p>
         ) : (
           <>
@@ -259,6 +311,9 @@ function JudgeDetail({ judge, teams }: { judge: JudgeRow; teams: TeamOption[] })
                     <input type="checkbox" checked={picked.has(t.id)} onChange={() => togglePick(t.id)} />
                     <span className="mono w-28 shrink-0 text-xs text-ink-3">{t.teamCode}</span>
                     <span className="min-w-0 flex-1 truncate text-sm text-ink">{t.name}</span>
+                    <span className={`nums shrink-0 text-xs ${t.judgeCount === 0 ? "font-semibold" : "text-ink-3"}`} style={t.judgeCount === 0 ? { color: "var(--warn)" } : undefined}>
+                      {t.judgeCount === 0 ? "no judges yet" : `${t.judgeCount} judge${t.judgeCount === 1 ? "" : "s"}`}
+                    </span>
                   </label>
                 ))
               )}

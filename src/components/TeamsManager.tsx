@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/Toast";
 import { EmptyState } from "@/components/ui/misc";
 import { Icon } from "@/components/ui/icons";
+import { friendlyApiError } from "@/lib/uiErrors";
 
 export interface TeamRow {
   id: string;
@@ -22,7 +23,8 @@ export interface TeamRow {
 type Draft = { teamCode: string; name: string; members: string; projectTitle: string; repoUrl: string };
 const EMPTY: Draft = { teamCode: "", name: "", members: "", projectTitle: "", repoUrl: "" };
 
-export function TeamsManager({ initialTeams }: { initialTeams: TeamRow[] }) {
+/** `locked`: results are finalized — the API rejects team changes, so the controls are hidden. */
+export function TeamsManager({ initialTeams, locked = false }: { initialTeams: TeamRow[]; locked?: boolean }) {
   const router = useRouter();
   const toast = useToast();
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -60,13 +62,16 @@ export function TeamsManager({ initialTeams }: { initialTeams: TeamRow[] }) {
     });
     setBusy(false);
     if (res.ok) { toast(editingId === "new" ? "Team added" : "Team updated"); setEditingId(null); router.refresh(); }
-    else { const d = await res.json().catch(() => ({})); toast(d.error ?? "Save failed", "error"); }
+    else { const d = await res.json().catch(() => ({})); toast(friendlyApiError(res.status, d.error, "Save failed"), "error"); }
   }
 
   async function remove(t: TeamRow) {
-    if (!confirm(`Delete "${t.name}" (${t.teamCode})? This also deletes its submissions.`)) return;
+    if (!confirm(`Delete "${t.name}" (${t.teamCode})?
+
+This permanently deletes the team together with its AI submissions, judge assignments and judge evaluations. This cannot be undone.`)) return;
     const res = await fetch(`/api/teams/${t.id}`, { method: "DELETE" });
-    if (res.ok) { toast("Team deleted"); router.refresh(); } else toast("Delete failed", "error");
+    if (res.ok) { toast("Team deleted"); router.refresh(); }
+    else { const d = await res.json().catch(() => ({})); toast(friendlyApiError(res.status, d.error, "Delete failed"), "error"); }
   }
 
   async function importCsv() {
@@ -75,7 +80,7 @@ export function TeamsManager({ initialTeams }: { initialTeams: TeamRow[] }) {
     const d = await res.json().catch(() => ({}));
     setBusy(false);
     if (res.ok) { toast(`Imported ${d.created} new, ${d.updated} updated`); setCsv(""); setShowCsv(false); router.refresh(); }
-    else toast(d.error ?? "Import failed", "error");
+    else toast(friendlyApiError(res.status, d.error, "Import failed"), "error");
   }
 
   const repoShort = (u: string) => u.replace(/^https?:\/\/(www\.)?github\.com\//, "").replace(/\.git$/, "");
@@ -95,11 +100,19 @@ export function TeamsManager({ initialTeams }: { initialTeams: TeamRow[] }) {
             )}
           </p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => setShowCsv((v) => !v)} className="btn-ghost">Import CSV</button>
-          <button onClick={startAdd} className="btn-primary"><Icon.plus size={16} /> Add team</button>
-        </div>
+        {!locked && (
+          <div className="flex gap-2">
+            <button onClick={() => setShowCsv((v) => !v)} className="btn-ghost">Import CSV</button>
+            <button onClick={startAdd} className="btn-primary"><Icon.plus size={16} /> Add team</button>
+          </div>
+        )}
       </header>
+
+      {locked && (
+        <p className="mb-4 rounded-lg border border-warn/40 px-4 py-3 text-sm" style={{ color: "var(--warn)" }}>
+          Results have been finalized. Teams can no longer be added, edited or deleted.
+        </p>
+      )}
 
       {showCsv && (
         <div className="card mb-4 p-4">
@@ -132,7 +145,7 @@ export function TeamsManager({ initialTeams }: { initialTeams: TeamRow[] }) {
       )}
 
       {initialTeams.length === 0 ? (
-        <EmptyState icon="teams" title="No teams yet" description="Add a team or import a CSV to get started." action={<button onClick={startAdd} className="btn-primary"><Icon.plus size={16} /> Add team</button>} />
+        <EmptyState icon="teams" title="No teams have been added yet." description={locked ? undefined : "Add a team or import a CSV to get started."} action={locked ? undefined : <button onClick={startAdd} className="btn-primary"><Icon.plus size={16} /> Add team</button>} />
       ) : (
         <div className="card overflow-hidden">
           <div className="hidden grid-cols-[0.7fr_1.2fr_1.8fr_0.5fr_auto] gap-4 border-b border-[var(--glass-border)] px-4 py-2.5 text-xs font-medium uppercase tracking-wider text-ink-3 sm:grid">
@@ -152,15 +165,19 @@ export function TeamsManager({ initialTeams }: { initialTeams: TeamRow[] }) {
                       {repoShort(t.repoUrl)}<Icon.external size={11} />
                     </a>
                   ) : (
-                    <span className="text-xs text-ink-3">No repo — <button onClick={() => startEdit(t)} className="text-brand hover:underline">add URL</button></span>
+                    <span className="text-xs text-ink-3">No repo{!locked && <> — <button onClick={() => startEdit(t)} className="text-brand hover:underline">add URL</button></>}</span>
                   )}
                 </div>
                 <div className="text-sm text-ink-2">
                   <span className="nums font-medium text-ink">{t.memberNames.length}</span>
                 </div>
                 <div className="flex items-center gap-3 sm:justify-end">
-                  <button onClick={() => startEdit(t)} className="text-xs font-medium text-ink-2 hover:text-ink">Edit</button>
-                  <button onClick={() => remove(t)} className="text-xs font-medium text-ink-2 hover:text-bad">Delete</button>
+                  {!locked && (
+                    <>
+                      <button onClick={() => startEdit(t)} className="text-xs font-medium text-ink-2 hover:text-ink" aria-label={`Edit ${t.teamCode}`}>Edit</button>
+                      <button onClick={() => remove(t)} className="text-xs font-medium text-ink-2 hover:text-bad" aria-label={`Delete ${t.teamCode}`}>Delete</button>
+                    </>
+                  )}
                 </div>
               </div>
             ))}

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/Toast";
 import { ScoreRing } from "@/components/ui/ScoreRing";
 import { totalBandVar } from "@/components/ui/ProgressBar";
+import { readApiError } from "@/lib/uiErrors";
 
 export interface ScoreFormEvaluation {
   id: string;
@@ -30,7 +31,8 @@ function inputError(raw: string, scaleMax: number): string | null {
   return null;
 }
 
-export function JudgeScoreForm({ evaluation }: { evaluation: ScoreFormEvaluation }) {
+/** `locked`: judging is finalized — a remaining draft is shown read-only (the API rejects edits too). */
+export function JudgeScoreForm({ evaluation, locked = false }: { evaluation: ScoreFormEvaluation; locked?: boolean }) {
   const router = useRouter();
   const toast = useToast();
   const submitted = evaluation.status === "SUBMITTED";
@@ -58,10 +60,9 @@ export function JudgeScoreForm({ evaluation }: { evaluation: ScoreFormEvaluation
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ scores }),
-    });
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      toast(d.error ?? "Could not save", "error");
+    }).catch(() => null);
+    if (!res?.ok) {
+      toast(res ? await readApiError(res, "Could not save the draft.") : "Network error — your scores were not saved. Try again.", "error");
       return false;
     }
     return true;
@@ -79,12 +80,11 @@ export function JudgeScoreForm({ evaluation }: { evaluation: ScoreFormEvaluation
     // Save the current inputs first so the submitted scores are exactly what is on screen.
     const ok = await save();
     if (ok) {
-      const res = await fetch(`/api/judge/evaluations/${evaluation.id}/submit`, { method: "POST" });
-      if (res.ok) {
+      const res = await fetch(`/api/judge/evaluations/${evaluation.id}/submit`, { method: "POST" }).catch(() => null);
+      if (res?.ok) {
         toast("Evaluation submitted");
       } else {
-        const d = await res.json().catch(() => ({}));
-        toast(d.error ?? "Could not submit", "error");
+        toast(res ? await readApiError(res, "Could not submit the evaluation.") : "Network error — the evaluation was not submitted. Try again.", "error");
       }
     }
     setBusy(false);
@@ -107,15 +107,27 @@ export function JudgeScoreForm({ evaluation }: { evaluation: ScoreFormEvaluation
             </p>
             {evaluation.submittedAt && (
               <p className="mt-0.5 text-xs text-ink-3">
-                Submitted {new Date(evaluation.submittedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}. This evaluation is read-only.
+                Submitted {new Date(evaluation.submittedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}.
               </p>
             )}
+            <p className="mt-1 text-sm font-medium text-ink">This evaluation has been submitted and cannot be changed.</p>
+            {locked && <p className="mt-0.5 text-xs text-ink-3">Judging has been finalized.</p>}
           </div>
         </div>
-      ) : (
-        <p className="mb-4 text-sm text-ink-2">
-          Score each criterion on its own scale. Save a draft any time; submit once every criterion is scored.
+      ) : locked ? (
+        <p className="mb-4 rounded-lg border border-warn/40 px-4 py-3 text-sm" style={{ color: "var(--warn)" }}>
+          Judging has been finalized. This draft was not submitted and can no longer be changed.
         </p>
+      ) : (
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <span className="status-pill status-review">
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: "currentColor" }} />
+            DRAFT
+          </span>
+          <p className="text-sm text-ink-2">
+            Score each criterion on its own scale. Save a draft any time; submit once every criterion is scored.
+          </p>
+        </div>
       )}
 
       <div className="flex flex-col gap-3">
@@ -143,7 +155,7 @@ export function JudgeScoreForm({ evaluation }: { evaluation: ScoreFormEvaluation
                       step={1}
                       value={values[c.criterionId] ?? ""}
                       onChange={(e) => setValues((v) => ({ ...v, [c.criterionId]: e.target.value }))}
-                      disabled={submitted || busy}
+                      disabled={submitted || locked || busy}
                       placeholder="—"
                       aria-invalid={!!err}
                       aria-describedby={`${inputId}-max`}
@@ -160,8 +172,8 @@ export function JudgeScoreForm({ evaluation }: { evaluation: ScoreFormEvaluation
         })}
       </div>
 
-      {!submitted && (
-        <div className="card mt-4 p-4">
+      {!submitted && !locked && (
+        <div className="card sticky bottom-3 z-10 mt-4 p-4 shadow-lg" role="region" aria-label="Save or submit this evaluation">
           <div className="flex flex-wrap items-center gap-3">
             <div className="text-sm text-ink-2">
               <span className="nums font-semibold text-ink">{filled}</span> of {evaluation.criteria.length} scored
@@ -169,13 +181,13 @@ export function JudgeScoreForm({ evaluation }: { evaluation: ScoreFormEvaluation
               Running total <span className="nums font-semibold text-ink">{runningTotal.toFixed(2)}</span> / 100
             </div>
             <div className="ml-auto flex gap-2">
-              <button onClick={saveDraft} disabled={busy || hasErrors} className="btn-ghost">
+              <button onClick={saveDraft} disabled={busy || hasErrors} className="btn-ghost" title={hasErrors ? "Fix the highlighted scores first" : undefined}>
                 {busy && !confirming ? "Saving…" : "Save Draft"}
               </button>
               <button
                 onClick={() => setConfirming(true)}
                 disabled={busy || hasErrors || !complete}
-                title={!complete ? "Score every criterion to submit" : undefined}
+                title={hasErrors ? "Fix the highlighted scores first" : !complete ? "Score every criterion to submit" : undefined}
                 className="btn-primary"
               >
                 Submit Evaluation
@@ -186,7 +198,10 @@ export function JudgeScoreForm({ evaluation }: { evaluation: ScoreFormEvaluation
           {confirming && (
             <div className="mt-4 rounded-lg border border-warn/40 px-4 py-3" style={{ background: "var(--surface-2)" }}>
               <p className="text-sm font-medium" style={{ color: "var(--warn)" }}>
-                Once submitted, you cannot edit your evaluation.
+                Once submitted, this evaluation cannot be edited.
+              </p>
+              <p className="mt-1 text-xs text-ink-2">
+                You are submitting a score of <span className="nums font-semibold text-ink">{runningTotal.toFixed(2)}</span> / 100.
               </p>
               <div className="mt-3 flex gap-2">
                 <button onClick={submit} disabled={busy} className="btn-primary">{busy ? "Submitting…" : "Confirm submit"}</button>

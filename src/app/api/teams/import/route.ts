@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { HttpError, requireOrganizer } from "@/lib/requireOrganizer";
+import { assertJudgingOpen, JudgeServiceError, TEAMS_FINALIZED_MSG, whileJudgingOpen } from "@/lib/judges";
 
 /**
  * POST /api/teams/import — CSV bulk import (upsert by teamCode).
@@ -38,6 +39,14 @@ export async function POST(req: Request) {
     await requireOrganizer();
   } catch (e) {
     if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
+    throw e;
+  }
+
+  // Teams are frozen once results are finalized (fast check; writes below are guarded too).
+  try {
+    await assertJudgingOpen(prisma, TEAMS_FINALIZED_MSG);
+  } catch (e) {
+    if (e instanceof JudgeServiceError) return NextResponse.json({ error: e.message }, { status: e.status });
     throw e;
   }
 
@@ -93,12 +102,18 @@ export async function POST(req: Request) {
     }
 
     const existing = await prisma.team.findUnique({ where: { teamCode } });
-    if (existing) {
-      await prisma.team.update({ where: { teamCode }, data: { name, university, track, memberNames } });
-      updated++;
-    } else {
-      await prisma.team.create({ data: { teamCode, name, university, track, memberNames } });
-      created++;
+    try {
+      if (existing) {
+        await whileJudgingOpen(prisma, [prisma.team.update({ where: { teamCode }, data: { name, university, track, memberNames } })], TEAMS_FINALIZED_MSG);
+        updated++;
+      } else {
+        await whileJudgingOpen(prisma, [prisma.team.create({ data: { teamCode, name, university, track, memberNames } })], TEAMS_FINALIZED_MSG);
+        created++;
+      }
+    } catch (e) {
+      // Finalized mid-import: stop; rows already written committed before finalization.
+      if (e instanceof JudgeServiceError) return NextResponse.json({ error: e.message, created, updated }, { status: e.status });
+      throw e;
     }
   }
 

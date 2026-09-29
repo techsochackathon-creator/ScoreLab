@@ -2,19 +2,21 @@ import { EmptyState, SectionTitle } from "@/components/ui/misc";
 import { totalBandVar } from "@/components/ui/ProgressBar";
 import type { JudgeResults } from "@/lib/judgeResults";
 import { officialStatus, type OfficialStatus } from "@/lib/officialResults";
-import { ResultsPublishControl } from "@/components/ResultsPublishControl";
+import { ResultsLifecycleControl } from "@/components/ResultsLifecycleControl";
+import { JudgingProgressPanel } from "@/components/JudgingProgressPanel";
+import type { JudgingProgress } from "@/lib/officialResults";
 
 const fmt = (n: number | null) => (n === null ? "—" : n.toFixed(2));
 
 const STATUS_LABEL: Record<OfficialStatus, { label: string; pill: string }> = {
-  WINNER: { label: "Winner", pill: "status-completed" },
+  WINNER: { label: "Leader", pill: "status-completed" },
   TIED_FIRST: { label: "Tied for 1st", pill: "status-review" },
   RANKED: { label: "Ranked", pill: "status-queued" },
   NOT_EVALUATED: { label: "Not Evaluated", pill: "status-queued" },
 };
 
-/** Read-only results. The winner is derived from the scores — there are no actions here. */
-export function JudgeResultsView({ results, publishedAt }: { results: JudgeResults; publishedAt: string | null }) {
+/** Live results while judging is open. After finalization the page shows FinalResultsView instead. */
+export function JudgeResultsView({ results, blockers, progress }: { results: JudgeResults; blockers: string[]; progress: JudgingProgress }) {
   const byId = new Map(results.ranked.map((t) => [t.teamId, t]));
   const top = results.topTeamIds.map((id) => byId.get(id)!).filter(Boolean);
   const winner = results.winnerTeamId ? byId.get(results.winnerTeamId) ?? null : null;
@@ -28,14 +30,18 @@ export function JudgeResultsView({ results, publishedAt }: { results: JudgeResul
         </p>
       </header>
 
-      <ResultsPublishControl publishedAt={publishedAt} canPublish={results.status !== "NO_RESULTS"} />
+      <ResultsLifecycleControl phase="JUDGING_OPEN" blockers={blockers} />
+
+      <JudgingProgressPanel progress={progress} finalized={false} readinessLink={false} />
+
+      <h2 className="mb-2 mt-6 text-sm font-semibold uppercase tracking-wider text-ink-3">Live standings (not final)</h2>
 
       {/* ── Winner / tie ── */}
       {results.status === "WINNER" && winner && (
         <section className="card mb-4 flex flex-wrap items-center gap-4 p-5" style={{ borderColor: "rgba(251, 191, 36, 0.35)" }}>
           <span className="grid h-11 w-11 place-items-center rounded-full text-lg font-bold text-white" style={{ background: "var(--gold)" }}>1</span>
           <div className="min-w-0 flex-1">
-            <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--gold)" }}>Winner</div>
+            <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--gold)" }}>Current leader — not final until finalized</div>
             <div className="text-lg font-bold text-ink">
               <span className="mono">{winner.teamCode}</span> · {winner.name}
             </div>
@@ -50,7 +56,7 @@ export function JudgeResultsView({ results, publishedAt }: { results: JudgeResul
         <section className="card mb-4 p-5" style={{ borderColor: "rgba(245, 158, 11, 0.45)" }}>
           <div className="text-sm font-bold uppercase tracking-wider" style={{ color: "var(--warn)" }}>TIE — WINNER NOT DETERMINED</div>
           <p className="mt-1 text-sm text-ink-2">
-            {top.length} teams share the highest official judge score. No winner is selected.
+            {top.length} teams share the highest official judge score. No winner is selected, and results cannot be finalized while first place is tied.
           </p>
           <ul className="mt-3 divide-y divide-[var(--glass-border)] rounded-lg border border-[var(--glass-border)]">
             {top.map((t) => (
@@ -66,7 +72,7 @@ export function JudgeResultsView({ results, publishedAt }: { results: JudgeResul
 
       {/* ── Ranked teams ── */}
       {results.ranked.length === 0 ? (
-        <EmptyState icon="leaderboard" title="No submitted evaluations yet" description="Results appear once judges submit their evaluations." />
+        <EmptyState icon="leaderboard" title="No evaluations have been submitted yet." description="Standings appear here as judges submit their evaluations. Assign teams to judges on the Judges page." />
       ) : (
         <div className="card overflow-hidden">
           <div className="overflow-x-auto">
@@ -93,7 +99,7 @@ export function JudgeResultsView({ results, publishedAt }: { results: JudgeResul
                       <span className="mono text-xs text-ink-3">{t.teamCode}</span>
                       <span className="ml-2 font-medium text-ink">{t.name}</span>
                       {results.winnerTeamId === t.teamId && (
-                        <span className="ml-2 rounded px-1.5 py-0.5 text-[10px] font-bold text-white" style={{ background: "var(--gold)" }}>WINNER</span>
+                        <span className="ml-2 rounded px-1.5 py-0.5 text-[10px] font-bold text-white" style={{ background: "var(--gold)" }}>LEADER</span>
                       )}
                       {t.projectTitle && <div className="text-xs text-ink-3">{t.projectTitle}</div>}
                     </td>

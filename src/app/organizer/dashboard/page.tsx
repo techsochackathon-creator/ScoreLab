@@ -5,6 +5,9 @@ import { StatCard, EmptyState, SectionTitle, StatusBadge } from "@/components/ui
 import { ScoreRing } from "@/components/ui/ScoreRing";
 import { ProgressBar, totalBandVar } from "@/components/ui/ProgressBar";
 import { Icon, type IconName } from "@/components/ui/icons";
+import { JudgingStatusCard } from "@/components/JudgingStatusCard";
+import { getJudgeResults } from "@/lib/judgeResults";
+import { finalizationBlockers, getOfficialState, judgingProgress } from "@/lib/officialResults";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +35,9 @@ const EVENT_ICONS: Record<string, { icon: string; color: string }> = {
 
 export default async function OverviewPage() {
   const ds = await getDataset();
+  // Official (judge-score) workflow status — shown first.
+  const official = await getOfficialState(prisma);
+  const live = official ? null : await getJudgeResults(prisma);
   const totals = ds.teams.map((t) => t.totalScore);
   const s = summary(totals);
   const completion = ds.teamsTotal ? Math.round((ds.teams.length / ds.teamsTotal) * 100) : 0;
@@ -67,13 +73,24 @@ export default async function OverviewPage() {
               Here&apos;s what&apos;s happening with your hackathon today.
             </p>
           </div>
-          <div className="flex gap-2">
-            <Link href="/organizer/evaluations" className="btn-primary">
-              <Icon.spark size={16} /> Start evaluation
+          <div className="flex flex-wrap gap-2">
+            <Link href="/organizer/results" className="btn-primary">Official results</Link>
+            <Link href="/organizer/evaluations" className="btn-ghost">
+              <Icon.spark size={16} /> AI evaluation
             </Link>
           </div>
         </div>
       </div>
+
+      <div className="relative z-10 fade-in-up">
+        {official ? (
+          <JudgingStatusCard phase="FINALIZED" state={official} />
+        ) : (
+          <JudgingStatusCard phase="JUDGING_OPEN" progress={judgingProgress(live!)} blockers={finalizationBlockers(live!).length} />
+        )}
+      </div>
+
+      <h2 className="mb-3 mt-6 text-sm font-semibold uppercase tracking-wider text-ink-3">AI evaluation (reference only — not used for official results)</h2>
 
       {/* ── Stat Cards ── */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireJudge } from "@/lib/requireOrganizer";
-import { listTeamsWithStatus } from "@/lib/judgeEvaluations";
+import { listTeamsWithStatus, summarizeProgress } from "@/lib/judgeEvaluations";
 import { judgeErrorResponse } from "@/lib/judgeApi";
 
 /**
@@ -13,7 +13,7 @@ export async function GET() {
   try {
     const judge = await requireJudge();
     const teams = await listTeamsWithStatus(prisma, judge.id);
-    return NextResponse.json({ judge, teams, assignmentCount: teams.length });
+    return NextResponse.json({ judge, teams, assignmentCount: teams.length, progress: summarizeProgress(teams.map((t) => t.status)) });
   } catch (e) {
     return judgeErrorResponse(e);
   }

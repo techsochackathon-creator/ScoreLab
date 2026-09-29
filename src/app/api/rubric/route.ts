@@ -3,6 +3,7 @@ import { z, ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
 import { HttpError, requireOrganizer } from "@/lib/requireOrganizer";
 import { getOrCreateRubric } from "@/lib/rubric";
+import { assertRubricEditable, JudgeServiceError } from "@/lib/judges";
 import type { Prisma } from "@prisma/client";
 
 const anchor = z.object({ score: z.number().int().min(1), label: z.string().trim() });
@@ -37,6 +38,14 @@ export async function PUT(req: Request) {
     await requireOrganizer();
   } catch (e) {
     if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
+    throw e;
+  }
+
+  // Saving deletes and recreates every Criterion, so it is locked once judging has started.
+  try {
+    await assertRubricEditable(prisma);
+  } catch (e) {
+    if (e instanceof JudgeServiceError) return NextResponse.json({ error: e.message }, { status: e.status });
     throw e;
   }
 

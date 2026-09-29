@@ -5,12 +5,15 @@ export function ProgressBar({
   color = "var(--brand)",
   className = "",
   height = 6,
+  label,
 }: {
   value: number | null;
   max?: number;
   color?: string;
   className?: string;
   height?: number;
+  /** Accessible name, e.g. "Judging progress". */
+  label?: string;
 }) {
   const pct = value == null ? 0 : Math.max(0, Math.min(100, (value / max) * 100));
   return (
@@ -19,7 +22,9 @@ export function ProgressBar({
       style={{ height }}
       role="progressbar"
       aria-valuenow={value ?? 0}
+      aria-valuemin={0}
       aria-valuemax={max}
+      aria-label={label}
     >
       <div
         className="h-full rounded-full"

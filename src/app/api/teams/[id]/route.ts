@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
 import { HttpError, requireOrganizer } from "@/lib/requireOrganizer";
+import { assertJudgingOpen, JudgeServiceError, TEAMS_FINALIZED_MSG, whileJudgingOpen } from "@/lib/judges";
 
 const teamUpdate = z.object({
   teamCode: z.string().trim().min(1).max(64),
@@ -19,6 +20,14 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     await requireOrganizer();
   } catch (e) {
     if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
+    throw e;
+  }
+
+  // Teams are frozen once results are finalized (fast check; writes below are guarded too).
+  try {
+    await assertJudgingOpen(prisma, TEAMS_FINALIZED_MSG);
+  } catch (e) {
+    if (e instanceof JudgeServiceError) return NextResponse.json({ error: e.message }, { status: e.status });
     throw e;
   }
   const { id } = await params;
@@ -41,9 +50,10 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   }
 
   try {
-    const team = await prisma.team.update({ where: { id }, data });
+    const [team] = await whileJudgingOpen(prisma, [prisma.team.update({ where: { id }, data })], TEAMS_FINALIZED_MSG);
     return NextResponse.json({ team });
-  } catch {
+  } catch (e) {
+    if (e instanceof JudgeServiceError) return NextResponse.json({ error: e.message }, { status: e.status });
     return NextResponse.json({ error: "Team not found" }, { status: 404 });
   }
 }
@@ -55,11 +65,20 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
     throw e;
   }
+
+  // Teams are frozen once results are finalized (fast check; writes below are guarded too).
+  try {
+    await assertJudgingOpen(prisma, TEAMS_FINALIZED_MSG);
+  } catch (e) {
+    if (e instanceof JudgeServiceError) return NextResponse.json({ error: e.message }, { status: e.status });
+    throw e;
+  }
   const { id } = await params;
   try {
-    await prisma.team.delete({ where: { id } });
+    await whileJudgingOpen(prisma, [prisma.team.delete({ where: { id } })], TEAMS_FINALIZED_MSG);
     return NextResponse.json({ ok: true });
-  } catch {
+  } catch (e) {
+    if (e instanceof JudgeServiceError) return NextResponse.json({ error: e.message }, { status: e.status });
     return NextResponse.json({ error: "Team not found" }, { status: 404 });
   }
 }

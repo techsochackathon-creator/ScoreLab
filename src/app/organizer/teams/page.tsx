@@ -1,10 +1,14 @@
 import { prisma } from "@/lib/prisma";
+import { isJudgingFinalized } from "@/lib/judges";
 import { TeamsManager, type TeamRow } from "@/components/TeamsManager";
 
 export const dynamic = "force-dynamic";
 
 export default async function TeamsPage() {
-  const teams = await prisma.team.findMany({ orderBy: [{ track: "asc" }, { name: "asc" }] });
+  const [teams, locked] = await Promise.all([
+    prisma.team.findMany({ orderBy: [{ track: "asc" }, { name: "asc" }] }),
+    isJudgingFinalized(prisma),
+  ]);
   const rows: TeamRow[] = teams.map((t) => ({
     id: t.id,
     teamCode: t.teamCode,
@@ -16,5 +20,5 @@ export default async function TeamsPage() {
     technologies: t.technologies,
     repoUrl: t.repoUrl,
   }));
-  return <TeamsManager initialTeams={rows} />;
+  return <TeamsManager initialTeams={rows} locked={locked} />;
 }

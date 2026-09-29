@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { Prisma, type PrismaClient, type JudgeEvaluationStatus } from "@prisma/client";
-import { JudgeServiceError } from "@/lib/judges";
+import { JudgeServiceError, assertJudgingOpen, whileJudgingOpen } from "@/lib/judges";
 
 /**
  * Manual judge evaluations: draft → submitted, scored against the existing rubric.
@@ -13,7 +13,7 @@ import { JudgeServiceError } from "@/lib/judges";
  * `db` is injected so tests can use an in-memory fake (tests/judgeEvaluations.test.ts).
  */
 
-export type JudgeEvalDb = Pick<PrismaClient, "judgeAssignment" | "judgeEvaluation" | "judgeCriterionScore" | "rubric" | "$transaction">;
+export type JudgeEvalDb = Pick<PrismaClient, "judgeAssignment" | "judgeEvaluation" | "judgeCriterionScore" | "rubric" | "resultsPublication" | "$transaction" | "$queryRaw">;
 
 /** What a judge may see about a team (blind judging: no name, university or members). */
 const BLIND_TEAM_SELECT = { id: true, teamCode: true, projectTitle: true, projectDescription: true, repoUrl: true } as const;
@@ -102,6 +102,61 @@ export async function listTeamsWithStatus(db: JudgeEvalDb, judgeId: string) {
   }));
 }
 
+// ---------------------------------------------------------------------------
+// Progress (pure; used by the judge dashboard and the organizer judges page)
+// ---------------------------------------------------------------------------
+
+export interface EvaluationProgress {
+  assigned: number;
+  submitted: number;
+  draft: number;
+  notStarted: number;
+  /** submitted / assigned, whole percent (0 when nothing is assigned). */
+  percent: number;
+}
+
+/** Counts for one judge's assigned-team statuses. */
+export function summarizeProgress(statuses: EvaluationStatus[]): EvaluationProgress {
+  const count = (s: EvaluationStatus) => statuses.filter((x) => x === s).length;
+  const submitted = count("SUBMITTED");
+  return {
+    assigned: statuses.length,
+    submitted,
+    draft: count("DRAFT"),
+    notStarted: count("NOT_STARTED"),
+    percent: statuses.length ? Math.round((submitted / statuses.length) * 100) : 0,
+  };
+}
+
+/**
+ * Per judge: status of each ASSIGNED team (an evaluation of a team that is no
+ * longer assigned is not part of the judge's workload) and the summary counts.
+ */
+export function progressByJudge(
+  assignments: { judgeId: string; teamId: string }[],
+  evaluations: { judgeId: string; teamId: string; status: JudgeEvaluationStatus }[],
+): Map<string, { statusByTeam: Record<string, EvaluationStatus>; progress: EvaluationProgress }> {
+  const evalStatus = new Map(evaluations.map((e) => [`${e.judgeId}:${e.teamId}`, e.status]));
+  const byJudge = new Map<string, Record<string, EvaluationStatus>>();
+  for (const a of assignments) {
+    const statuses = byJudge.get(a.judgeId) ?? {};
+    statuses[a.teamId] = evalStatus.get(`${a.judgeId}:${a.teamId}`) ?? "NOT_STARTED";
+    byJudge.set(a.judgeId, statuses);
+  }
+  return new Map(
+    [...byJudge].map(([judgeId, statusByTeam]) => [judgeId, { statusByTeam, progress: summarizeProgress(Object.values(statusByTeam)) }]),
+  );
+}
+
+/** progressByJudge from the database (organizer only — spans every judge). */
+export async function getJudgeProgress(db: Pick<PrismaClient, "judgeAssignment" | "judgeEvaluation">) {
+  const [assignments, evaluations] = await Promise.all([
+    db.judgeAssignment.findMany({ select: { judgeId: true, teamId: true } }),
+    db.judgeEvaluation.findMany({ select: { judgeId: true, teamId: true, status: true } }),
+  ]);
+  return progressByJudge(assignments, evaluations);
+}
+
 /** Existing evaluation for an assigned team, or null if not started. */
 export async function getEvaluation(db: JudgeEvalDb, judgeId: string, teamId: string): Promise<EvaluationView | null> {
   await requireAssignedTeam(db, judgeId, teamId);
@@ -128,6 +183,7 @@ export async function getOrStartEvaluation(db: JudgeEvalDb, judgeId: string, tea
     include: { scores: true },
   });
   if (existing) return toView(db, existing);
+  await assertJudgingOpen(db); // no new evaluations once judging is finalized
 
   const rubric = await db.rubric.findFirst({ include: { criteria: { orderBy: { order: "asc" } } } });
   if (!rubric || rubric.criteria.length === 0) {
@@ -135,7 +191,7 @@ export async function getOrStartEvaluation(db: JudgeEvalDb, judgeId: string, tea
   }
 
   try {
-    const created = await db.judgeEvaluation.create({
+    const [created] = await whileJudgingOpen(db, [db.judgeEvaluation.create({
       data: {
         judgeId,
         teamId,
@@ -149,7 +205,7 @@ export async function getOrStartEvaluation(db: JudgeEvalDb, judgeId: string, tea
         },
       },
       include: { scores: true },
-    });
+    })]);
     return toView(db, created);
   } catch (e) {
     // Opened twice at once: the other request created it — load that one.
@@ -168,6 +224,7 @@ export async function getOrStartEvaluation(db: JudgeEvalDb, judgeId: string, tea
 export async function saveDraft(db: JudgeEvalDb, judgeId: string, evaluationId: string, input: z.input<typeof draftInput>) {
   const { scores } = draftInput.parse(input);
   const current = await loadOwn(db, judgeId, evaluationId);
+  await assertJudgingOpen(db);
 
   const rowByCriterion = new Map(current.scores.map((s) => [s.criterionId, s]));
   const seen = new Set<string>();
@@ -182,11 +239,12 @@ export async function saveDraft(db: JudgeEvalDb, judgeId: string, evaluationId: 
   }
   if (errors.length) throw new JudgeServiceError(400, errors.join("; "));
 
-  // One DB transaction. Every write is conditional on the evaluation still being
-  // this judge's DRAFT, so a save racing a submit writes nothing. Bumping
-  // updatedAt first also invalidates any submit that read the old scores.
+  // One DB transaction, guarded against finalization (whileJudgingOpen). Every
+  // write is conditional on the evaluation still being this judge's DRAFT, so a
+  // save racing a submit writes nothing. Bumping updatedAt first also
+  // invalidates any submit that read the old scores.
   const draft = { id: evaluationId, judgeId, status: "DRAFT" as const };
-  const [bumped] = await db.$transaction([
+  const [bumped] = await whileJudgingOpen(db, [
     db.judgeEvaluation.updateMany({ where: draft, data: { updatedAt: new Date() } }),
     ...scores.map((s) =>
       db.judgeCriterionScore.updateMany({
@@ -202,16 +260,20 @@ export async function saveDraft(db: JudgeEvalDb, judgeId: string, evaluationId: 
 /** Submit the judge's own DRAFT. Every criterion must be scored. Irreversible. */
 export async function submitEvaluation(db: JudgeEvalDb, judgeId: string, evaluationId: string) {
   const ev = await loadOwn(db, judgeId, evaluationId);
+  await assertJudgingOpen(db);
 
   const missing = ev.scores.filter((s) => s.score === null).map((s) => s.criterionName);
   if (missing.length) throw new JudgeServiceError(400, `Score every criterion before submitting. Missing: ${missing.join(", ")}`);
   const finalScore = calculateJudgeFinalScore(ev.scores.map((s) => ({ score: s.score!, scaleMax: s.scaleMax, weight: s.weight })));
 
-  // Only succeeds if nothing changed since we read the scores (updatedAt) and it is still a draft.
-  const { count } = await db.judgeEvaluation.updateMany({
-    where: { id: evaluationId, judgeId, status: "DRAFT", updatedAt: ev.updatedAt },
-    data: { status: "SUBMITTED", finalScore, submittedAt: new Date() },
-  });
+  // Only succeeds if judging is still open (whileJudgingOpen: serialized against
+  // finalization), nothing changed since we read the scores (updatedAt), and it is still a draft.
+  const [{ count }] = await whileJudgingOpen(db, [
+    db.judgeEvaluation.updateMany({
+      where: { id: evaluationId, judgeId, status: "DRAFT", updatedAt: ev.updatedAt },
+      data: { status: "SUBMITTED", finalScore, submittedAt: new Date() },
+    }),
+  ]);
   if (count === 0) {
     const now = await loadOwn(db, judgeId, evaluationId, { allowSubmitted: true });
     throw new JudgeServiceError(409, now.status === "SUBMITTED" ? SUBMITTED_MSG : "Scores changed while submitting. Please try again.");

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
 import { HttpError, requireOrganizer } from "@/lib/requireOrganizer";
+import { assertJudgingOpen, JudgeServiceError, TEAMS_FINALIZED_MSG, whileJudgingOpen } from "@/lib/judges";
 
 const teamInput = z.object({
   teamCode: z.string().trim().min(1, "team code is required").max(64),
@@ -33,6 +34,14 @@ export async function POST(req: Request) {
     throw e;
   }
 
+  // Teams are frozen once results are finalized (fast check; writes below are guarded too).
+  try {
+    await assertJudgingOpen(prisma, TEAMS_FINALIZED_MSG);
+  } catch (e) {
+    if (e instanceof JudgeServiceError) return NextResponse.json({ error: e.message }, { status: e.status });
+    throw e;
+  }
+
   let data;
   try {
     data = teamInput.parse(await req.json());
@@ -48,6 +57,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `Team code "${data.teamCode}" already exists` }, { status: 409 });
   }
 
-  const team = await prisma.team.create({ data });
-  return NextResponse.json({ team }, { status: 201 });
+  try {
+    const [team] = await whileJudgingOpen(prisma, [prisma.team.create({ data })], TEAMS_FINALIZED_MSG);
+    return NextResponse.json({ team }, { status: 201 });
+  } catch (e) {
+    if (e instanceof JudgeServiceError) return NextResponse.json({ error: e.message }, { status: e.status });
+    throw e;
+  }
 }

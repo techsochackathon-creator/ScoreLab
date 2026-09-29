@@ -27,6 +27,7 @@ import {
   removeAssignment,
   teamsForJudge,
   updateJudge,
+  whileJudgingOpen,
   type JudgeDb,
 } from "../src/lib/judges";
 import { verifyCredentials } from "../src/lib/credentials";
@@ -53,12 +54,21 @@ function uniqueError() {
   return new Prisma.PrismaClientKnownRequestError("Unique constraint failed", { code: "P2002", clientVersion: "test" });
 }
 
+/** Like a PrismaPromise: the write runs only when awaited or executed by $transaction. */
+const lazy = <T>(run: () => Promise<T>): Promise<T> => {
+  let p: Promise<T> | undefined;
+  const get = () => (p ??= run());
+  return { then: (a, b) => get().then(a, b), catch: (b) => get().catch(b), finally: (f) => get().finally(f), [Symbol.toStringTag]: "Promise" } as Promise<T>;
+};
+
 function makeDb() {
   let seq = 0;
   const id = (p: string) => `${p}_${++seq}`;
   const users: MUser[] = [];
   const teams: MTeam[] = [];
   const assignments: MAssignment[] = [];
+  let finalized = false;
+  const evaluations: { judgeId: string; teamId: string; status: "DRAFT" | "SUBMITTED" }[] = [];
 
   const matchUser = (u: MUser, w: Record<string, unknown>) =>
     (w.id === undefined || u.id === w.id) &&
@@ -100,12 +110,12 @@ function makeDb() {
         const u = users.find((x) => (where.email ? x.email === where.email : x.id === where.id));
         return u ? pick(u, select) : null;
       },
-      create: async ({ data, select }: { data: Omit<MUser, "id" | "createdAt" | "updatedAt">; select: Sel }) => {
+      create: ({ data, select }: { data: Omit<MUser, "id" | "createdAt" | "updatedAt">; select: Sel }) => lazy(async () => {
         if (users.some((u) => u.email === data.email)) throw uniqueError();
         const u: MUser = { id: id("user"), createdAt: new Date(), updatedAt: new Date(), ...data };
         users.push(u);
         return pick(u, select);
-      },
+      }),
       update: async ({ where, data, select }: { where: { id: string }; data: Partial<MUser>; select: Sel }) => {
         const u = users.find((x) => x.id === where.id)!;
         if (data.email && users.some((x) => x.email === data.email && x.id !== u.id)) throw uniqueError();
@@ -128,20 +138,40 @@ function makeDb() {
         const a = assignments.find((x) => x.judgeId === where.judgeId_teamId.judgeId && x.teamId === where.judgeId_teamId.teamId);
         return a ? assignmentView(a, select) : null;
       },
-      create: async ({ data }: { data: { judgeId: string; teamId: string } }) => {
+      create: ({ data }: { data: { judgeId: string; teamId: string } }) => lazy(async () => {
         if (assignments.some((a) => a.judgeId === data.judgeId && a.teamId === data.teamId)) throw uniqueError();
         const a = { id: id("asg"), createdAt: new Date(), ...data };
         assignments.push(a);
         return a;
-      },
-      deleteMany: async ({ where }: { where: Record<string, unknown> }) => {
+      }),
+      deleteMany: ({ where }: { where: Record<string, unknown> }) => lazy(async () => {
         const before = assignments.length;
         for (let i = assignments.length - 1; i >= 0; i--) if (matchAssignment(assignments[i], where)) assignments.splice(i, 1);
         return { count: before - assignments.length };
-      },
+      }),
       count: async ({ where }: { where: Record<string, unknown> }) => assignments.filter((a) => matchAssignment(a, where)).length,
     },
-    $transaction: async (ops: Promise<unknown>[]) => Promise.all(ops),
+    // Batch transaction, all-or-nothing like Postgres: restore state if any op fails.
+    $transaction: async (ops: Promise<unknown>[]) => {
+      const saved = [structuredClone(users), structuredClone(assignments)] as const;
+      try {
+        return await Promise.all(ops);
+      } catch (e) {
+        users.splice(0, users.length, ...saved[0]);
+        assignments.splice(0, assignments.length, ...saved[1]);
+        throw e;
+      }
+    },
+    // whileJudgingOpen: lock is a no-op here; the guard fails once finalized (like the real SQL cast).
+    $queryRaw: async (strings: TemplateStringsArray) => {
+      if (strings.join("?").includes('"ResultsPublication"') && finalized) throw new Error("invalid input syntax for type integer: \"OFFICIAL:JUDGING_FINALIZED\"");
+      return [{ ok: 1 }];
+    },
+    resultsPublication: { findFirst: async () => (finalized ? { id: "official" } : null) },
+    judgeEvaluation: {
+      findFirst: async ({ where }: { where: { judgeId: string; teamId: string } }) =>
+        evaluations.find((e) => e.judgeId === where.judgeId && e.teamId === where.teamId) ? { id: "eval" } : null,
+    },
   };
 
   const addTeam = (teamCode: string) => {
@@ -158,7 +188,9 @@ function makeDb() {
     return u;
   };
 
-  return { db: db as unknown as JudgeDb, users, teams, assignments, addTeam, addOrganizer };
+  const finalize = () => { finalized = true; };
+  const addEvaluation = (judgeId: string, teamId: string, status: "DRAFT" | "SUBMITTED") => evaluations.push({ judgeId, teamId, status });
+  return { db: db as unknown as JudgeDb, users, teams, assignments, evaluations, addTeam, addOrganizer, finalize, addEvaluation };
 }
 
 async function rejects(p: Promise<unknown>, status: number) {
@@ -327,6 +359,24 @@ describe("assignments", () => {
     assert.equal(t.assignments.length, 0);
   });
 
+  it("assignments cannot be added or removed after judging is finalized", async () => {
+    const t1 = t.addTeam("TEAM-001");
+    const t2 = t.addTeam("TEAM-002");
+    await assignTeams(t.db, judgeId, { teamIds: [t1.id] });
+    t.finalize();
+    await rejects(assignTeams(t.db, judgeId, { teamIds: [t2.id] }), 409);
+    await rejects(removeAssignment(t.db, judgeId, t1.id), 409);
+    assert.deepEqual(t.assignments.map((a) => a.teamId), [t1.id]);
+  });
+
+  it("guarded write is rejected if finalization lands after the pre-check (race path)", async () => {
+    const t1 = t.addTeam("TEAM-001");
+    t.finalize();
+    // Call the guarded write directly, as if the pre-check had passed just before finalization.
+    await rejects(whileJudgingOpen(t.db, [t.db.judgeAssignment.create({ data: { judgeId, teamId: t1.id } })]), 409);
+    assert.equal(t.assignments.length, 0, "nothing written");
+  });
+
   it("removes an assignment; removing a missing one is 404", async () => {
     const t1 = t.addTeam("TEAM-001");
     await assignTeams(t.db, judgeId, { teamIds: [t1.id] });
@@ -364,5 +414,63 @@ describe("judge access is limited to assigned teams", () => {
     assert.equal((await getActiveJudge(t.db, a.id))?.id, a.id);
     assert.equal(await getActiveJudge(t.db, org.id), null);
     assert.equal(await getActiveJudge(t.db, "unknown"), null);
+  });
+});
+
+describe("Phase 7: assignment protection unchanged", () => {
+  it("duplicates, non-judges and unknown teams are rejected; changes after finalization are 409", async () => {
+    const t = makeDb();
+    const judge = await createJudge(t.db, { name: "A", email: "a@x.io", password: PW });
+    const org = await t.addOrganizer("org@x.io", PW);
+    const t1 = t.addTeam("TEAM-001");
+    const t2 = t.addTeam("TEAM-002");
+
+    await assignTeams(t.db, judge.id, { teamIds: [t1.id] });
+    await rejects(assignTeams(t.db, judge.id, { teamIds: [t1.id] }), 409); // duplicate
+    await rejects(assignTeams(t.db, org.id, { teamIds: [t2.id] }), 404); // organizer is not a judge
+    await rejects(assignTeams(t.db, judge.id, { teamIds: ["nope"] }), 404);
+
+    t.finalize();
+    await rejects(assignTeams(t.db, judge.id, { teamIds: [t2.id] }), 409);
+    await rejects(removeAssignment(t.db, judge.id, t1.id), 409);
+    assert.deepEqual(t.assignments.map((a) => a.teamId), [t1.id]);
+  });
+});
+
+describe("assignment removal once an evaluation exists", () => {
+  it("allowed with no evaluation; 409 with a DRAFT or SUBMITTED evaluation; 409 after finalization", async () => {
+    const t = makeDb();
+    const judge = await createJudge(t.db, { name: "A", email: "a@x.io", password: PW });
+    const [t1, t2, t3, t4] = ["TEAM-001", "TEAM-002", "TEAM-003", "TEAM-004"].map((c) => t.addTeam(c));
+    await assignTeams(t.db, judge.id, { teamIds: [t1.id, t2.id, t3.id, t4.id] });
+
+    // 1. no evaluation → removed
+    await removeAssignment(t.db, judge.id, t1.id);
+    assert.ok(!t.assignments.some((a) => a.teamId === t1.id));
+
+    // 2. DRAFT evaluation → 409, assignment and evaluation kept
+    t.addEvaluation(judge.id, t2.id, "DRAFT");
+    await assert.rejects(removeAssignment(t.db, judge.id, t2.id), (e: unknown) =>
+      e instanceof JudgeServiceError && e.status === 409 && /already started an evaluation/.test(e.message));
+
+    // 3. SUBMITTED evaluation → 409
+    t.addEvaluation(judge.id, t3.id, "SUBMITTED");
+    await rejects(removeAssignment(t.db, judge.id, t3.id), 409);
+
+    // Another judge's evaluation of the same team does not block this judge's removal.
+    const other = await createJudge(t.db, { name: "B", email: "b@x.io", password: PW });
+    await assignTeams(t.db, other.id, { teamIds: [t4.id] });
+    t.addEvaluation(other.id, t4.id, "SUBMITTED");
+    await removeAssignment(t.db, judge.id, t4.id);
+
+    assert.deepEqual(t.assignments.filter((a) => a.judgeId === judge.id).map((a) => a.teamId).sort(), [t2.id, t3.id].sort());
+    assert.equal(t.evaluations.length, 3, "evaluations untouched");
+
+    // 4. after finalization → existing finalization 409 (even with no evaluation)
+    await assignTeams(t.db, judge.id, { teamIds: [t1.id] });
+    t.finalize();
+    await assert.rejects(removeAssignment(t.db, judge.id, t1.id), (e: unknown) =>
+      e instanceof JudgeServiceError && e.status === 409 && /finalized/.test(e.message));
+    assert.ok(t.assignments.some((a) => a.judgeId === judge.id && a.teamId === t1.id));
   });
 });

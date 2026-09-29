@@ -20,7 +20,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
  *  - disabling a judge never deletes assignments
  */
 
-export type JudgeDb = Pick<PrismaClient, "user" | "team" | "judgeAssignment" | "$transaction">;
+export type JudgeDb = Pick<PrismaClient, "user" | "team" | "judgeAssignment" | "judgeEvaluation" | "resultsPublication" | "$transaction" | "$queryRaw">;
 
 export class JudgeServiceError extends Error {
   constructor(
@@ -29,6 +29,81 @@ export class JudgeServiceError extends Error {
   ) {
     super(message);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Judging locks (Phase 6). Enforced server-side by every write they protect.
+// ---------------------------------------------------------------------------
+
+export const FINALIZED_MSG = "Judging has been finalized. Official results can no longer be changed.";
+export const TEAMS_FINALIZED_MSG = "Results have been finalized and teams can no longer be modified.";
+
+/**
+ * Postgres transaction-scoped advisory lock serializing finalization against
+ * every write it freezes. Finalization takes it EXCLUSIVE for its whole
+ * read-validate-insert transaction (officialResults.ts); guarded writes take it
+ * SHARED (whileJudgingOpen). Released automatically at commit/rollback.
+ */
+export const JUDGING_LOCK_KEY = 734201906;
+const LOCK_KEY_SQL = Prisma.raw(String(JUDGING_LOCK_KEY));
+
+/** Judging is finalized once the official result record exists (src/lib/officialResults.ts). */
+export async function isJudgingFinalized(db: Pick<PrismaClient, "resultsPublication">): Promise<boolean> {
+  return (await db.resultsPublication.findFirst({ select: { id: true } })) !== null;
+}
+
+/** Fast 409 pre-check. The authoritative check is the guard inside whileJudgingOpen. */
+export async function assertJudgingOpen(db: Pick<PrismaClient, "resultsPublication">, message = FINALIZED_MSG) {
+  if (await isJudgingFinalized(db)) throw new JudgeServiceError(409, message);
+}
+
+/**
+ * Run `writes` in ONE database transaction only if judging is not finalized:
+ *   1. shared advisory lock — waits while a finalization is in progress, and makes
+ *      a finalization that starts now wait until this transaction commits
+ *   2. guard — casting 'OFFICIAL:JUDGING_FINALIZED' to integer raises an error
+ *      iff a finalized row exists, which aborts the whole transaction
+ *   3. the writes
+ * So a write either commits before finalization reads the data (and is in the
+ * snapshot) or is rejected with 409 — it can never land after the snapshot.
+ * A single batched transaction: no client round trips while it is open.
+ */
+export async function whileJudgingOpen<T extends readonly Prisma.PrismaPromise<unknown>[]>(
+  db: Pick<PrismaClient, "$transaction" | "$queryRaw" | "resultsPublication">,
+  writes: [...T],
+  message = FINALIZED_MSG,
+): Promise<{ [K in keyof T]: Awaited<T[K]> }> {
+  try {
+    const results = await db.$transaction([
+      db.$queryRaw`SELECT 1 AS ok FROM pg_advisory_xact_lock_shared(${LOCK_KEY_SQL})`,
+      db.$queryRaw`SELECT CAST("slot" || ':JUDGING_FINALIZED' AS integer) AS finalized FROM "ResultsPublication"`,
+      ...writes,
+    ]);
+    return results.slice(2) as { [K in keyof T]: Awaited<T[K]> };
+  } catch (e) {
+    if (await isJudgingFinalized(db)) throw new JudgeServiceError(409, message);
+    throw e;
+  }
+}
+
+/** Take the EXCLUSIVE judging lock inside an interactive transaction (finalization only). */
+export function lockJudgingExclusive(tx: Pick<Prisma.TransactionClient, "$queryRaw">) {
+  return tx.$queryRaw`SELECT 1 AS ok FROM pg_advisory_xact_lock(${LOCK_KEY_SQL})`;
+}
+
+/**
+ * 409 once any judge evaluation is submitted. Saving the rubric deletes and
+ * recreates every Criterion, so it must not change after judging has started.
+ */
+export async function assertRubricEditable(db: Pick<PrismaClient, "judgeEvaluation">) {
+  if (await isRubricLocked(db)) {
+    throw new JudgeServiceError(409, "The rubric is locked because judging has already started.");
+  }
+}
+
+/** True once any judge evaluation is submitted (the rule assertRubricEditable enforces). */
+export async function isRubricLocked(db: Pick<PrismaClient, "judgeEvaluation">): Promise<boolean> {
+  return (await db.judgeEvaluation.count({ where: { status: "SUBMITTED" } })) > 0;
 }
 
 /** Same cost factor as prisma/seed.ts. */
@@ -160,6 +235,7 @@ export async function listAssignments(db: JudgeDb, judgeId: string): Promise<Ass
 export async function assignTeams(db: JudgeDb, judgeId: string, input: z.input<typeof assignmentAddInput>) {
   const { teamIds } = assignmentAddInput.parse(input);
   await getJudge(db, judgeId);
+  await assertJudgingOpen(db);
 
   if (new Set(teamIds).size !== teamIds.length) {
     throw new JudgeServiceError(400, "The same team appears more than once in the request");
@@ -179,7 +255,7 @@ export async function assignTeams(db: JudgeDb, judgeId: string, input: z.input<t
   }
 
   try {
-    await db.$transaction(teamIds.map((teamId) => db.judgeAssignment.create({ data: { judgeId, teamId } })));
+    await whileJudgingOpen(db, teamIds.map((teamId) => db.judgeAssignment.create({ data: { judgeId, teamId } })));
   } catch (e) {
     if (isUniqueViolation(e)) throw new JudgeServiceError(409, "One or more teams are already assigned to this judge");
     throw e;
@@ -187,9 +263,20 @@ export async function assignTeams(db: JudgeDb, judgeId: string, input: z.input<t
   return teamsForJudge(db, judgeId);
 }
 
+/**
+ * Remove an assignment — only while judging is open and only if the judge has
+ * not started an evaluation of that team (DRAFT or SUBMITTED). Otherwise the
+ * evaluation would vanish from the judge's workload while still counting
+ * toward the team's official score. Existing evaluations are never touched.
+ */
 export async function removeAssignment(db: JudgeDb, judgeId: string, teamId: string) {
   await getJudge(db, judgeId);
-  const { count } = await db.judgeAssignment.deleteMany({ where: { judgeId, teamId } });
+  await assertJudgingOpen(db);
+  const started = await db.judgeEvaluation.findFirst({ where: { judgeId, teamId }, select: { id: true } });
+  if (started) {
+    throw new JudgeServiceError(409, "This assignment cannot be removed because the judge has already started an evaluation.");
+  }
+  const [{ count }] = await whileJudgingOpen(db, [db.judgeAssignment.deleteMany({ where: { judgeId, teamId } })]);
   if (count === 0) throw new JudgeServiceError(404, "Assignment not found");
 }
 

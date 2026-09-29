@@ -113,15 +113,24 @@ model JudgeCriterionScore {
   @@unique([evaluationId, criterionId])
 }
 
-/// Whether the official (judge-score) results are public on /leaderboard.
-/// At most one row (`slot` is unique); unpublishing deletes it. Results are
-/// always computed live from submitted judge evaluations (src/lib/officialResults.ts).
+/// The single official (judge-score) result. At most one row (`slot` is unique).
+///   no row          → judging open; results are live
+///   row             → FINALIZED: `snapshot` is the authoritative, immutable result;
+///                     judge evaluations and assignments are locked
+///   publishedAt set → PUBLISHED: /leaderboard shows the snapshot
+/// Nothing updates or deletes the row except setting/clearing publishedAt.
+/// See src/lib/officialResults.ts.
 model ResultsPublication {
-  id            String   @id @default(cuid())
-  slot          String   @unique @default("OFFICIAL")
-  /// Organizer user id (plain string: the record outlives account changes).
-  publishedById String
-  publishedAt   DateTime @default(now())
+  id            String    @id @default(cuid())
+  slot          String    @unique @default("OFFICIAL")
+  /// Organizer user ids (plain strings: the record outlives account changes).
+  finalizedById String
+  finalizedAt   DateTime  @default(now())
+  /// FinalSnapshot JSON: per team id, code, name, final judge score, rank, winner flag.
+  /// No individual judge scores and no AI data.
+  snapshot      Json
+  publishedById String?
+  publishedAt   DateTime?
 }
 
 // ---------------------------------------------------------------------------

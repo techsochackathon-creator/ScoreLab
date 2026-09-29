@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/Toast";
 import { Icon } from "@/components/ui/icons";
+import { friendlyApiError } from "@/lib/uiErrors";
 
 export interface AnchorDraft { score: number; label: string }
 export interface CriterionDraft { name: string; description: string; weight: number; scaleMax: number; anchors: AnchorDraft[] }
@@ -14,7 +15,8 @@ const toEditable = (c: CriterionDraft): Editable => ({ ...c, _id: uid() });
 const makeAnchors = (scaleMax: number, existing: AnchorDraft[] = []): AnchorDraft[] =>
   Array.from({ length: scaleMax }, (_, i) => existing.find((a) => a.score === i + 1) ?? { score: i + 1, label: "" });
 
-export function RubricEditor({ initialName, initialCriteria }: { initialName: string; initialCriteria: CriterionDraft[] }) {
+/** `locked`: judging has started (a submitted evaluation exists) — the API rejects saves, so the form is disabled. */
+export function RubricEditor({ initialName, initialCriteria, locked = false }: { initialName: string; initialCriteria: CriterionDraft[]; locked?: boolean }) {
   const router = useRouter();
   const toast = useToast();
   const [criteria, setCriteria] = useState<Editable[]>(initialCriteria.map(toEditable));
@@ -39,7 +41,7 @@ export function RubricEditor({ initialName, initialCriteria }: { initialName: st
     const d = await res.json().catch(() => ({}));
     setSaving(false);
     if (res.ok) { toast("Rubric saved"); router.refresh(); }
-    else toast(d.error ?? "Save failed", "error");
+    else toast(friendlyApiError(res.status, d.error, "Save failed"), "error");
   }
 
   return (
@@ -48,6 +50,14 @@ export function RubricEditor({ initialName, initialCriteria }: { initialName: st
         <h1 className="text-2xl font-bold tracking-tight text-ink">Rubric</h1>
         <p className="mt-1 text-sm text-ink-2">Criteria, weights, and anchor descriptions. Applies to all future evaluations.</p>
       </header>
+
+      {locked && (
+        <p className="mb-4 rounded-lg border border-warn/40 px-4 py-3 text-sm" style={{ color: "var(--warn)" }}>
+          The rubric is locked because judging has already started. Judges score against the criteria below.
+        </p>
+      )}
+
+      <fieldset disabled={locked} className="m-0 min-w-0 border-0 p-0">
 
       {/* Weight budget meter */}
       <div className="card sticky top-16 z-20 mb-6 p-4 lg:top-20">
@@ -121,6 +131,7 @@ export function RubricEditor({ initialName, initialCriteria }: { initialName: st
           {saving ? "Saving…" : "Save rubric"}
         </button>
       </div>
+      </fieldset>
     </div>
   );
 }

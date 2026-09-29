@@ -10,6 +10,7 @@ import {
   getEvaluation,
   getOrStartEvaluation,
   listTeamsWithStatus,
+  summarizeProgress,
   saveDraft,
   submitEvaluation,
   type JudgeEvalDb,
@@ -33,6 +34,13 @@ const CRITERIA = [
   { id: "c6", name: "Presentation", description: "Pitch", weight: 10, scaleMax: 10, order: 5 },
 ];
 
+/** Like a PrismaPromise: the write runs only when awaited or executed by $transaction. */
+const lazy = <T>(run: () => Promise<T>): Promise<T> => {
+  let p: Promise<T> | undefined;
+  const get = () => (p ??= run());
+  return { then: (a, b) => get().then(a, b), catch: (b) => get().catch(b), finally: (f) => get().finally(f), [Symbol.toStringTag]: "Promise" } as Promise<T>;
+};
+
 function makeDb() {
   let seq = 0;
   const id = (p: string) => `${p}_${++seq}`;
@@ -43,6 +51,7 @@ function makeDb() {
   const assignments: { judgeId: string; teamId: string }[] = [];
   const evals: MEval[] = [];
   const scores: MScore[] = [];
+  let finalized = false;
   type EvalWhere = { id: string; judgeId: string; status: string };
   const matchEval = (e: MEval, w: EvalWhere) => e.id === w.id && e.judgeId === w.judgeId && e.status === w.status;
   const withScores = (e: MEval) => ({ ...e, scores: scores.filter((s) => s.evaluationId === e.id).map((s) => ({ ...s })) });
@@ -66,7 +75,7 @@ function makeDb() {
         return e ? withScores(e) : null;
       },
       findMany: async ({ where }: { where: { judgeId: string } }) => evals.filter((e) => e.judgeId === where.judgeId).map((e) => ({ ...e })),
-      create: async ({ data }: { data: { judgeId: string; teamId: string; scores: { create: Omit<MScore, "id" | "evaluationId" | "score">[] } } }) => {
+      create: ({ data }: { data: { judgeId: string; teamId: string; scores: { create: Omit<MScore, "id" | "evaluationId" | "score">[] } } }) => lazy(async () => {
         if (evals.some((e) => e.judgeId === data.judgeId && e.teamId === data.teamId)) {
           throw new Prisma.PrismaClientKnownRequestError("Unique constraint failed", { code: "P2002", clientVersion: "test" });
         }
@@ -74,28 +83,44 @@ function makeDb() {
         evals.push(e);
         for (const s of data.scores.create) scores.push({ id: id("score"), evaluationId: e.id, score: null, ...s });
         return withScores(e);
-      },
-      updateMany: async ({ where, data }: { where: EvalWhere & { updatedAt?: Date }; data: Partial<MEval> }) => {
+      }),
+      updateMany: ({ where, data }: { where: EvalWhere & { updatedAt?: Date }; data: Partial<MEval> }) => lazy(async () => {
         const hits = evals.filter((e) => matchEval(e, where) && (!where.updatedAt || e.updatedAt.getTime() === where.updatedAt.getTime()));
         hits.forEach((e) => Object.assign(e, data, { updatedAt: data.updatedAt ?? new Date(e.updatedAt.getTime() + 1) }));
         return { count: hits.length };
-      },
+      }),
     },
     judgeCriterionScore: {
-      updateMany: async ({ where, data }: { where: { id: string; evaluation: { is: EvalWhere } }; data: { score: number | null } }) => {
+      updateMany: ({ where, data }: { where: { id: string; evaluation: { is: EvalWhere } }; data: { score: number | null } }) => lazy(async () => {
         const hits = scores.filter((s) => s.id === where.id && matchEval(evals.find((e) => e.id === s.evaluationId)!, where.evaluation.is));
         hits.forEach((s) => Object.assign(s, data));
         return { count: hits.length };
-      },
+      }),
     },
+    resultsPublication: { findFirst: async () => (finalized ? { id: "official" } : null) },
     rubric: {
       findFirst: async () => ({ id: "r1", name: "Rubric", criteria: CRITERIA }),
     },
-    // Batch transactions: each op already ran in order when its promise was created.
-    $transaction: async (ops: Promise<unknown>[]) => Promise.all(ops),
+    // Batch transaction, all-or-nothing like Postgres: restore state if any op fails.
+    $transaction: async (ops: Promise<unknown>[]) => {
+      const saved = [structuredClone(evals), structuredClone(scores)] as const;
+      try {
+        return await Promise.all(ops);
+      } catch (e) {
+        evals.splice(0, evals.length, ...saved[0]);
+        scores.splice(0, scores.length, ...saved[1]);
+        throw e;
+      }
+    },
+    // whileJudgingOpen: lock is a no-op here; the guard fails once finalized (like the real SQL cast).
+    $queryRaw: async (strings: TemplateStringsArray) => {
+      if (strings.join("?").includes('"ResultsPublication"') && finalized) throw new Error("invalid input syntax for type integer: \"OFFICIAL:JUDGING_FINALIZED\"");
+      return [{ ok: 1 }];
+    },
   };
 
-  return { db: db as unknown as JudgeEvalDb, assignments, evals, scores };
+  const finalize = () => { finalized = true; };
+  return { db: db as unknown as JudgeEvalDb, assignments, evals, scores, finalize };
 }
 
 const FULL = [
@@ -216,6 +241,28 @@ describe("judge evaluations", () => {
     await rejects(saveDraft(t.db, "judgeA", ev.id, { scores: [{ criterionId: "c1", score: 1 }] }), 404);
   });
 
+  it("after finalization a judge cannot edit, submit, or start an evaluation — but can still view it", async () => {
+    const ev = await getOrStartEvaluation(t.db, "judgeA", "teamA");
+    await saveDraft(t.db, "judgeA", ev.id, { scores: FULL });
+    t.finalize();
+    await rejects(saveDraft(t.db, "judgeA", ev.id, { scores: [{ criterionId: "c1", score: 1 }] }), 409);
+    await rejects(submitEvaluation(t.db, "judgeA", ev.id), 409);
+    await rejects(getOrStartEvaluation(t.db, "judgeB", "teamB"), 409); // no new evaluations
+    assert.equal(t.evals.length, 1);
+    assert.equal(t.evals[0].status, "DRAFT");
+    assert.equal(t.scores.find((s) => s.criterionId === "c1" && s.evaluationId === ev.id)!.score, 16);
+    assert.equal((await getOrStartEvaluation(t.db, "judgeA", "teamA")).id, ev.id); // read-only access still works
+  });
+
+  it("a submitted evaluation cannot be edited after finalization either", async () => {
+    const ev = await getOrStartEvaluation(t.db, "judgeA", "teamA");
+    await saveDraft(t.db, "judgeA", ev.id, { scores: FULL });
+    await submitEvaluation(t.db, "judgeA", ev.id);
+    t.finalize();
+    await rejects(saveDraft(t.db, "judgeA", ev.id, { scores: [{ criterionId: "c1", score: 1 }] }), 409);
+    assert.equal(t.evals[0].finalScore, FULL_TOTAL);
+  });
+
   it("multiple judges evaluate the same team independently", async () => {
     const evA = await getOrStartEvaluation(t.db, "judgeA", "teamA");
     const evB = await getOrStartEvaluation(t.db, "judgeB", "teamA");
@@ -234,5 +281,58 @@ describe("judge evaluations", () => {
 
     const statuses = await listTeamsWithStatus(t.db, "judgeB");
     assert.deepEqual(statuses.map((s) => [s.teamCode, s.status]), [["TEAM-001", "DRAFT"], ["TEAM-002", "NOT_STARTED"]]);
+  });
+});
+
+describe("Phase 7: judge dashboard & team page", () => {
+  let t: ReturnType<typeof makeDb>;
+  beforeEach(() => {
+    t = makeDb();
+    t.assignments.push({ judgeId: "judgeA", teamId: "teamA" }, { judgeId: "judgeA", teamId: "teamB" }, { judgeId: "judgeB", teamId: "teamA" });
+  });
+
+  it("dashboard lists only the judge's assigned teams, with the judge's own NOT_STARTED / DRAFT / SUBMITTED status", async () => {
+    const evA = await getOrStartEvaluation(t.db, "judgeA", "teamA");
+    await saveDraft(t.db, "judgeA", evA.id, { scores: FULL });
+    await submitEvaluation(t.db, "judgeA", evA.id);
+    await getOrStartEvaluation(t.db, "judgeA", "teamB"); // draft
+
+    const a = await listTeamsWithStatus(t.db, "judgeA");
+    assert.deepEqual(a.map((x) => [x.teamCode, x.status]), [["TEAM-001", "SUBMITTED"], ["TEAM-002", "DRAFT"]]);
+    assert.deepEqual(summarizeProgress(a.map((x) => x.status)), { assigned: 2, submitted: 1, draft: 1, notStarted: 0, percent: 50 });
+
+    // Judge B shares TEAM-001 but sees only their own (not started) status, and not TEAM-002.
+    const b = await listTeamsWithStatus(t.db, "judgeB");
+    assert.deepEqual(b.map((x) => [x.teamCode, x.status]), [["TEAM-001", "NOT_STARTED"]]);
+    assert.deepEqual(Object.keys(b[0]).sort(), ["projectTitle", "status", "teamCode", "teamId"]); // no scores, judges or identity fields
+  });
+
+  it("a submitted evaluation is read-only", async () => {
+    const ev = await getOrStartEvaluation(t.db, "judgeA", "teamA");
+    await saveDraft(t.db, "judgeA", ev.id, { scores: FULL });
+    await submitEvaluation(t.db, "judgeA", ev.id);
+    await rejects(saveDraft(t.db, "judgeA", ev.id, { scores: [{ criterionId: "c1", score: 0 }] }), 409);
+    await rejects(submitEvaluation(t.db, "judgeA", ev.id), 409);
+    const view = await getOrStartEvaluation(t.db, "judgeA", "teamA");
+    assert.equal(view.status, "SUBMITTED");
+    assert.equal(view.finalScore, FULL_TOTAL);
+  });
+
+  it("a judge cannot open, read or edit a team / evaluation that is not theirs", async () => {
+    const evA = await getOrStartEvaluation(t.db, "judgeA", "teamB");
+    await rejects(getOrStartEvaluation(t.db, "judgeB", "teamB"), 404);
+    await rejects(getEvaluation(t.db, "judgeB", "teamB"), 404);
+    await rejects(saveDraft(t.db, "judgeB", evA.id, { scores: [{ criterionId: "c1", score: 1 }] }), 404);
+    await rejects(submitEvaluation(t.db, "judgeB", evA.id), 404);
+  });
+
+  it("finalization locks remain enforced", async () => {
+    const ev = await getOrStartEvaluation(t.db, "judgeA", "teamA");
+    await saveDraft(t.db, "judgeA", ev.id, { scores: FULL });
+    t.finalize();
+    await rejects(saveDraft(t.db, "judgeA", ev.id, { scores: FULL }), 409);
+    await rejects(submitEvaluation(t.db, "judgeA", ev.id), 409);
+    await rejects(getOrStartEvaluation(t.db, "judgeB", "teamA"), 409);
+    assert.equal((await listTeamsWithStatus(t.db, "judgeA"))[0].status, "DRAFT");
   });
 });
