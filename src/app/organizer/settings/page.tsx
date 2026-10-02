@@ -6,22 +6,25 @@ import { prisma } from "@/lib/prisma";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { SectionTitle } from "@/components/ui/misc";
 import { SignOutButton } from "@/components/SignOutButton";
+import { listOrganizers } from "@/lib/organizers";
+import { ChangePasswordForm, OrganizersManager } from "@/components/AccountSettings";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const session = await getServerSession(authOptions);
-  const [rubric, teamsCount, evalCount] = await Promise.all([
+  const [rubric, teamsCount, evalCount, organizers] = await Promise.all([
     getOrCreateRubric(),
     prisma.team.count(),
     prisma.submission.count({ where: { status: "EVALUATED" } }),
+    listOrganizers(prisma),
   ]);
 
   return (
     <div className="fade-in-up max-w-2xl">
       <header className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight text-ink">Settings</h1>
-        <p className="mt-1 text-sm text-ink-2">Appearance, rubric, and account.</p>
+        <p className="mt-1 text-sm text-ink-2">Appearance, rubric, account and organizers.</p>
       </header>
 
       <div className="flex flex-col gap-4">
@@ -68,6 +71,13 @@ export default async function SettingsPage() {
             <SignOutButton />
           </div>
         </section>
+
+        <ChangePasswordForm />
+
+        <OrganizersManager
+          currentUserId={session!.user.id}
+          organizers={organizers.map((o) => ({ ...o, createdAt: o.createdAt.toISOString() }))}
+        />
       </div>
     </div>
   );

@@ -2,7 +2,6 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getDataset, summary } from "@/lib/stats";
 import { StatCard, EmptyState, SectionTitle, StatusBadge } from "@/components/ui/misc";
-import { ScoreRing } from "@/components/ui/ScoreRing";
 import { ProgressBar, totalBandVar } from "@/components/ui/ProgressBar";
 import { Icon, type IconName } from "@/components/ui/icons";
 import { JudgingStatusCard } from "@/components/JudgingStatusCard";
@@ -26,13 +25,6 @@ function getGreeting() {
   return "Good evening";
 }
 
-const EVENT_ICONS: Record<string, { icon: string; color: string }> = {
-  EVALUATED: { icon: "✓", color: "var(--good)" },
-  EVALUATING: { icon: "▶", color: "var(--info)" },
-  REVIEW_REQUIRED: { icon: "⚠", color: "var(--warn)" },
-  FAILED: { icon: "✕", color: "var(--bad)" },
-};
-
 export default async function OverviewPage() {
   const ds = await getDataset();
   // Official (judge-score) workflow status — shown first.
@@ -40,14 +32,7 @@ export default async function OverviewPage() {
   const live = official ? null : await getJudgeResults(prisma);
   const totals = ds.teams.map((t) => t.totalScore);
   const s = summary(totals);
-  const completion = ds.teamsTotal ? Math.round((ds.teams.length / ds.teamsTotal) * 100) : 0;
   const topTeams = [...ds.teams].sort((a, b) => b.totalScore - a.totalScore).slice(0, 3);
-
-  const events = await prisma.evaluationEvent.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 10,
-    include: { team: true },
-  });
 
   // Recent evaluated submissions for the table
   const recentSubs = await prisma.submission.findMany({
@@ -105,69 +90,6 @@ export default async function OverviewPage() {
         </div>
         <div className="fade-in-up delay-4">
           <StatCard label="Top Score" value={s.count ? s.max.toFixed(1) : "—"} icon="leaderboard" foot={topTeams[0] ? topTeams[0].teamName : undefined} />
-        </div>
-      </div>
-
-      {/* ── Progress + Activity row ── */}
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* Evaluation Progress Panel */}
-        <div className="card p-6 lg:col-span-1 fade-in-up delay-5">
-          <SectionTitle>Evaluation Progress</SectionTitle>
-          <div className="flex items-center gap-5">
-            <ScoreRing value={completion} max={100} label="complete" decimals={0} color="var(--brand)" />
-            <div className="flex-1 space-y-2.5">
-              <ProgressItem label="Completed" value={ds.statusCounts.evaluated} color="var(--good)" />
-              {ds.statusCounts.evaluating > 0 && (
-                <ProgressItem label="Running" value={ds.statusCounts.evaluating} color="var(--info)" pulse />
-              )}
-              {ds.statusCounts.other > 0 && (
-                <ProgressItem label="Queued" value={ds.statusCounts.other} color="var(--ink-3)" />
-              )}
-              {ds.statusCounts.failed > 0 && (
-                <ProgressItem label="Failed" value={ds.statusCounts.failed} color="var(--bad)" />
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Recent Activity Timeline */}
-        <div className="card p-6 lg:col-span-2 fade-in-up delay-6">
-          <SectionTitle right={<Link href="/organizer/evaluations" className="link-brand text-xs">View all →</Link>}>
-            Recent Activity
-          </SectionTitle>
-          {events.length === 0 ? (
-            <p className="py-6 text-center text-sm text-ink-3">No evaluations yet.</p>
-          ) : (
-            <ul className="flex flex-col">
-              {events.slice(0, 8).map((e, i) => {
-                const ev = EVENT_ICONS[e.status ?? "EVALUATED"] ?? EVENT_ICONS.EVALUATED;
-                return (
-                  <li key={e.id} className="flex items-center gap-3 border-b border-[var(--glass-border)] py-2.5 last:border-0">
-                    <span
-                      className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-xs font-bold"
-                      style={{ background: `${ev.color}15`, color: ev.color }}
-                    >
-                      {ev.icon}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <span className="truncate text-sm text-ink">{e.team.name}</span>
-                      {e.status && e.status !== "EVALUATED" && (
-                        <span className="ml-2 text-[11px] text-ink-3">
-                          {e.status === "REVIEW_REQUIRED" ? "Review required" : e.status.toLowerCase()}
-                        </span>
-                      )}
-                    </div>
-                    {e.totalScore != null && (
-                      <span className="nums text-sm font-semibold" style={{ color: totalBandVar(e.totalScore) }}>
-                        {e.totalScore.toFixed(1)}
-                      </span>
-                    )}
-                    <span className="w-16 shrink-0 text-right text-[11px] text-ink-3">{timeAgo(e.createdAt)}</span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
         </div>
       </div>
 
@@ -325,18 +247,6 @@ export default async function OverviewPage() {
 }
 
 /* ── Sub-components ── */
-
-function ProgressItem({ label, value, color, pulse }: { label: string; value: number; color: string; pulse?: boolean }) {
-  return (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-2">
-        <span className={`h-2 w-2 rounded-full ${pulse ? "pulse-glow" : ""}`} style={{ background: color }} />
-        <span className="text-xs text-ink-2">{label}</span>
-      </div>
-      <span className="nums text-xs font-semibold text-ink">{value}</span>
-    </div>
-  );
-}
 
 function QuickAction({ href, icon, label, primary }: { href: string; icon: IconName; label: string; primary?: boolean }) {
   const I = Icon[icon];

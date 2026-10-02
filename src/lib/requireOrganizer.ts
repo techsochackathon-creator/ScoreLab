@@ -5,6 +5,7 @@ import type { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { checkRole } from "@/lib/roles";
 import { getActiveJudge } from "@/lib/judges";
+import { getActiveOrganizer } from "@/lib/organizers";
 
 export class HttpError extends Error {
   constructor(
@@ -15,13 +16,18 @@ export class HttpError extends Error {
   }
 }
 
-/** Throws HttpError(401/403) unless the caller is a signed-in organizer. */
+/**
+ * Throws HttpError(401/403) unless the caller is a signed-in, still-active organizer.
+ * Sessions are JWTs, so the active flag is re-read from the DB: an organizer
+ * disabled mid-session loses access immediately instead of when the token expires.
+ */
 export async function requireOrganizer(): Promise<Session> {
   const session = await getServerSession(authOptions);
   if (!session?.user) throw new HttpError(401, "Not authenticated");
   if (session.user.role !== "ORGANIZER") {
     throw new HttpError(403, "Organizer access required");
   }
+  if (!(await getActiveOrganizer(prisma, session.user.id))) throw new HttpError(403, "Organizer account is disabled");
   return session;
 }
 
