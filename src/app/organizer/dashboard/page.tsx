@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getDataset, summary } from "@/lib/stats";
 import { StatCard, EmptyState, SectionTitle, StatusBadge } from "@/components/ui/misc";
-import { ProgressBar, totalBandVar } from "@/components/ui/ProgressBar";
+import { totalBandVar } from "@/components/ui/ProgressBar";
 import { Icon, type IconName } from "@/components/ui/icons";
 import { JudgingStatusCard } from "@/components/JudgingStatusCard";
 import { getJudgeResults } from "@/lib/judgeResults";
@@ -32,7 +32,6 @@ export default async function OverviewPage() {
   const live = official ? null : await getJudgeResults(prisma);
   const totals = ds.teams.map((t) => t.totalScore);
   const s = summary(totals);
-  const topTeams = [...ds.teams].sort((a, b) => b.totalScore - a.totalScore).slice(0, 3);
 
   // Recent evaluated submissions for the table
   const recentSubs = await prisma.submission.findMany({
@@ -89,81 +88,7 @@ export default async function OverviewPage() {
           <StatCard label="Avg Score" value={s.count ? s.avg.toFixed(1) : "—"} icon="analytics" foot={s.count ? `across ${s.count} teams` : "no data yet"} />
         </div>
         <div className="fade-in-up delay-4">
-          <StatCard label="Top Score" value={s.count ? s.max.toFixed(1) : "—"} icon="leaderboard" foot={topTeams[0] ? topTeams[0].teamName : undefined} />
-        </div>
-      </div>
-
-      {/* ── Top Teams + AI Card row ── */}
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* Top Performing Teams */}
-        <div className="card p-6 lg:col-span-2 fade-in-up delay-7">
-          <SectionTitle right={<Link href="/leaderboard" className="link-brand text-xs">View leaderboard →</Link>}>
-            Top Performing Teams
-          </SectionTitle>
-          {topTeams.length === 0 ? (
-            <p className="py-4 text-center text-sm text-ink-3">No evaluated teams yet.</p>
-          ) : (
-            <div className="space-y-3">
-              {topTeams.map((t, i) => {
-                const medals = ["var(--gold)", "var(--silver)", "var(--bronze)"];
-                return (
-                  <div
-                    key={t.teamId}
-                    className="flex items-center gap-4 rounded-lg p-3 transition-all hover:bg-[var(--surface-2)]"
-                    style={{ border: i === 0 ? "1px solid rgba(251, 191, 36, 0.15)" : "1px solid transparent" }}
-                  >
-                    <span
-                      className="mono grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-bold text-white"
-                      style={{ background: medals[i] ?? "var(--ink-3)", boxShadow: i === 0 ? "0 0 12px rgba(251, 191, 36, 0.2)" : "none" }}
-                    >
-                      {i + 1}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-semibold text-ink">{t.teamName}</div>
-                      <div className="text-[11px] text-ink-3">{t.university}</div>
-                    </div>
-                    <div className="text-right">
-                      <span className="nums text-lg font-bold" style={{ color: totalBandVar(t.totalScore) }}>
-                        {t.totalScore.toFixed(1)}
-                      </span>
-                      <span className="ml-0.5 text-xs text-ink-3">/100</span>
-                    </div>
-                    <ProgressBar value={t.totalScore} color={totalBandVar(t.totalScore)} className="hidden w-20 sm:block" height={4} />
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Powered by AI Card */}
-        <div className="card p-6 lg:col-span-1 fade-in-up delay-8">
-          <div className="flex items-center gap-2">
-            <span
-              className="grid h-8 w-8 place-items-center rounded-lg"
-              style={{ background: "var(--brand-tint)" }}
-            >
-              <Icon.spark size={16} style={{ color: "var(--brand)" }} />
-            </span>
-            <SectionTitle>Powered by Gemini AI</SectionTitle>
-          </div>
-          <ul className="mt-3 space-y-3">
-            {[
-              "Analyzes project evidence from repositories",
-              "Evaluates against your rubric criteria",
-              "Provides detailed reasoning per criterion",
-              "Enables consistent, auditable evaluation",
-            ].map((text) => (
-              <li key={text} className="flex items-start gap-2 text-sm text-ink-2">
-                <span className="mt-0.5" style={{ color: "var(--brand)" }}>✓</span>
-                {text}
-              </li>
-            ))}
-          </ul>
-          <div className="section-divider mt-4" />
-          <p className="mt-3 text-[11px] text-ink-3 leading-relaxed">
-            AI-assisted evidence analysis. Final weighted scores are calculated server-side for deterministic results.
-          </p>
+          <StatCard label="Top Score" value={s.count ? s.max.toFixed(1) : "—"} icon="leaderboard" />
         </div>
       </div>
 
