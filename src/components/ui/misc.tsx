@@ -5,14 +5,14 @@ import { Icon, type IconName } from "@/components/ui/icons";
    Accent color per icon type — varied colors for different metrics
    ================================================================ */
 const ICON_ACCENTS: Record<string, { bg: string; fg: string }> = {
-  teams:       { bg: "rgba(56, 189, 248, 0.12)", fg: "var(--info)" },
-  check:       { bg: "rgba(16, 185, 129, 0.12)", fg: "var(--good)" },
+  teams:       { bg: "rgba(99, 203, 229, 0.12)", fg: "var(--info)" },
+  check:       { bg: "rgba(61, 220, 151, 0.12)", fg: "var(--good)" },
   analytics:   { bg: "rgba(167, 139, 250, 0.12)", fg: "var(--purple)" },
   leaderboard: { bg: "rgba(251, 191, 36, 0.12)", fg: "var(--warn)" },
   evaluations: { bg: "rgba(34, 211, 238, 0.12)", fg: "var(--cyan)" },
-  integrity:   { bg: "rgba(16, 185, 129, 0.12)", fg: "var(--good)" },
+  integrity:   { bg: "rgba(61, 220, 151, 0.12)", fg: "var(--good)" },
   spark:       { bg: "rgba(167, 139, 250, 0.12)", fg: "var(--purple)" },
-  runs:        { bg: "rgba(56, 189, 248, 0.12)", fg: "var(--info)" },
+  runs:        { bg: "rgba(99, 203, 229, 0.12)", fg: "var(--info)" },
 };
 
 /** Premium stat card with icon, value, and optional footnote. */

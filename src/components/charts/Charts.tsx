@@ -19,8 +19,8 @@ export function Histogram({ bins, labels, height = 180 }: { bins: number[]; labe
               style={{
                 height: `${(v / maxV) * 100}%`,
                 minHeight: v > 0 ? 4 : 0,
-                background: "linear-gradient(180deg, var(--brand), rgba(16, 185, 129, 0.3))",
-                boxShadow: v > 0 ? "0 0 8px rgba(16, 185, 129, 0.15)" : "none",
+                background: "linear-gradient(180deg, var(--brand), rgba(147, 133, 255, 0.3))",
+                boxShadow: v > 0 ? "0 0 8px rgba(147, 133, 255, 0.18)" : "none",
                 animationDelay: `${i * 60}ms`,
               }}
             />
@@ -96,7 +96,7 @@ export function RadarChart({
         const [x, y] = point(i, R);
         return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="var(--hair)" strokeWidth={0.5} />;
       })}
-      <polygon points={dataPath} fill="rgba(16, 185, 129, 0.08)" stroke="var(--brand)" strokeWidth={2} strokeLinejoin="round" />
+      <polygon points={dataPath} fill="rgba(147, 133, 255, 0.1)" stroke="var(--brand)" strokeWidth={2} strokeLinejoin="round" />
       {values.map((v, i) => {
         const [x, y] = point(i, R * (Math.max(0, Math.min(max, v)) / max));
         return (
