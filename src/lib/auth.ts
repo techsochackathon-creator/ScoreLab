@@ -1,7 +1,7 @@
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { verifyCredentials, ACCOUNT_DISABLED } from "@/lib/credentials";
 import type { Role } from "@prisma/client";
 
 export const authOptions: NextAuthOptions = {
@@ -17,20 +17,18 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email.toLowerCase() },
-        });
-        if (!user) return null;
-
-        const ok = await bcrypt.compare(credentials.password, user.passwordHash);
-        if (!ok) return null;
+        const result = await verifyCredentials(prisma, credentials.email, credentials.password);
+        if (!result.ok) {
+          if (result.reason === "disabled") throw new Error(ACCOUNT_DISABLED);
+          return null;
+        }
+        const { user } = result;
 
         return {
           id: user.id,
           email: user.email,
           name: user.name ?? undefined,
           role: user.role,
-          teamId: user.teamId ?? undefined,
         };
       },
     }),
@@ -39,7 +37,6 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.role = (user as { role: Role }).role;
-        token.teamId = (user as { teamId?: string }).teamId;
         token.uid = user.id;
       }
       return token;
@@ -48,7 +45,6 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.id = token.uid as string;
         session.user.role = token.role as Role;
-        session.user.teamId = token.teamId as string | undefined;
       }
       return session;
     },
