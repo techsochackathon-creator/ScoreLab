@@ -1,19 +1,10 @@
 import { NextResponse } from "next/server";
-import { z, ZodError } from "zod";
+import { ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
 import { HttpError, requireOrganizer } from "@/lib/requireOrganizer";
+import { teamCreateInput, firstFieldError } from "@/lib/teamSchemas";
 import { assertJudgingOpen, JudgeServiceError, TEAMS_FINALIZED_MSG, whileJudgingOpen } from "@/lib/judges";
 
-const teamInput = z.object({
-  teamCode: z.string().trim().min(1, "team code is required").max(64),
-  name: z.string().trim().min(1, "name is required").max(200),
-  university: z.string().trim().min(1, "university is required").max(200),
-  track: z.string().trim().min(1, "track is required").max(100),
-  memberNames: z.array(z.string().trim().min(1)).default([]),
-  projectTitle: z.string().trim().max(200).optional().nullable(),
-  projectDescription: z.string().trim().max(2000).optional().nullable(),
-  technologies: z.array(z.string().trim().min(1)).default([]),
-});
 
 export async function GET() {
   try {
@@ -44,10 +35,12 @@ export async function POST(req: Request) {
 
   let data;
   try {
-    data = teamInput.parse(await req.json());
+    data = teamCreateInput.parse(await req.json());
   } catch (e) {
     if (e instanceof ZodError) {
-      return NextResponse.json({ error: "Validation failed", details: e.flatten().fieldErrors }, { status: 400 });
+      const fields = e.flatten().fieldErrors;
+      const why = firstFieldError(fields);
+      return NextResponse.json({ error: why ? `Validation failed — ${why}` : "Validation failed", details: fields }, { status: 400 });
     }
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }

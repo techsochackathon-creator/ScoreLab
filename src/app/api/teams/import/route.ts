@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { HttpError, requireOrganizer } from "@/lib/requireOrganizer";
 import { assertJudgingOpen, JudgeServiceError, TEAMS_FINALIZED_MSG, whileJudgingOpen } from "@/lib/judges";
@@ -70,10 +71,11 @@ export async function POST(req: Request) {
   const iUni = col(["university", "school", "college"]);
   const iTrack = col(["track", "category"]);
   const iMembers = col(["members", "membernames", "member names", "team members"]);
+  const iRepo = col(["repourl", "repo url", "repo", "repository", "github", "github url"]);
 
-  if (iCode < 0 || iName < 0 || iUni < 0 || iTrack < 0) {
+  if (iCode < 0 || iName < 0) {
     return NextResponse.json(
-      { error: "CSV must have columns: teamCode, name, university, track (members optional)" },
+      { error: "CSV must have columns: teamCode, name (repoUrl and members optional)" },
       { status: 400 },
     );
   }
@@ -86,8 +88,9 @@ export async function POST(req: Request) {
     const cells = rows[r];
     const teamCode = (cells[iCode] ?? "").trim();
     const name = (cells[iName] ?? "").trim();
-    const university = (cells[iUni] ?? "").trim();
-    const track = (cells[iTrack] ?? "").trim();
+    const university = iUni >= 0 ? (cells[iUni] ?? "").trim() : null;
+    const track = iTrack >= 0 ? (cells[iTrack] ?? "").trim() : null;
+    const repoRaw = iRepo >= 0 ? (cells[iRepo] ?? "").trim() : null;
     const memberNames =
       iMembers >= 0
         ? (cells[iMembers] ?? "")
@@ -96,18 +99,29 @@ export async function POST(req: Request) {
             .filter(Boolean)
         : [];
 
-    if (!teamCode || !name || !university || !track) {
-      errors.push(`Row ${r + 1}: missing required field(s)`);
+    if (!teamCode || !name) {
+      errors.push(`Row ${r + 1}: missing team code or name`);
       continue;
     }
+    if (repoRaw && !z.string().url().safeParse(repoRaw).success) {
+      errors.push(`Row ${r + 1}: "${repoRaw}" is not a valid repository URL`);
+      continue;
+    }
+    // Columns absent from the CSV leave an existing team's values unchanged.
+    const optional = {
+      ...(university !== null ? { university } : {}),
+      ...(track !== null ? { track: track || "General" } : {}),
+      ...(repoRaw !== null ? { repoUrl: repoRaw || null } : {}),
+      ...(iMembers >= 0 ? { memberNames } : {}),
+    };
 
     const existing = await prisma.team.findUnique({ where: { teamCode } });
     try {
       if (existing) {
-        await whileJudgingOpen(prisma, [prisma.team.update({ where: { teamCode }, data: { name, university, track, memberNames } })], TEAMS_FINALIZED_MSG);
+        await whileJudgingOpen(prisma, [prisma.team.update({ where: { teamCode }, data: { name, ...optional } })], TEAMS_FINALIZED_MSG);
         updated++;
       } else {
-        await whileJudgingOpen(prisma, [prisma.team.create({ data: { teamCode, name, university, track, memberNames } })], TEAMS_FINALIZED_MSG);
+        await whileJudgingOpen(prisma, [prisma.team.create({ data: { teamCode, name, university: university ?? "", track: track || "General", memberNames, repoUrl: repoRaw || null } })], TEAMS_FINALIZED_MSG);
         created++;
       }
     } catch (e) {

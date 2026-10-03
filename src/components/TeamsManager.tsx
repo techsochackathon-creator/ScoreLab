@@ -50,11 +50,8 @@ export function TeamsManager({ initialTeams, locked = false }: { initialTeams: T
     const payload = {
       teamCode: draft.teamCode.trim(),
       name: draft.name.trim(),
-      university: "",
-      track: "General",
       memberNames: draft.members.split(",").map((m) => m.trim()).filter(Boolean),
       projectTitle: draft.projectTitle.trim() || null,
-      technologies: [],
       repoUrl: draft.repoUrl.trim() || null,
     };
     const res = await fetch(editingId === "new" ? "/api/teams" : `/api/teams/${editingId}`, {
