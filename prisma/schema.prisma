@@ -152,6 +152,13 @@ model Team {
   /// Canonical repository for batch evaluation.
   repoUrl            String?
 
+  /// Set when an organizer disqualifies the team. A disqualified team is excluded
+  /// from the official ranking (no rank, cannot win, not required for finalization).
+  /// Only possible while judging is open. See src/lib/disqualification.ts.
+  disqualifiedAt     DateTime?
+  /// Organizer-only; never shown publicly.
+  disqualifiedReason String?
+
   submissions      Submission[]
   evaluationEvents EvaluationEvent[]
   batchJobs        BatchJob[]

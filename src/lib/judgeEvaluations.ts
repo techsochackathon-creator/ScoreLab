@@ -87,7 +87,7 @@ export async function requireAssignedTeam(db: JudgeEvalDb, judgeId: string, team
 export async function listTeamsWithStatus(db: JudgeEvalDb, judgeId: string) {
   const [assignments, evaluations] = await Promise.all([
     db.judgeAssignment.findMany({
-      where: { judgeId },
+      where: { judgeId, team: { disqualifiedAt: null } },
       orderBy: { team: { teamCode: "asc" } },
       select: { team: { select: { id: true, teamCode: true, projectTitle: true } } },
     }),
@@ -151,7 +151,7 @@ export function progressByJudge(
 /** progressByJudge from the database (organizer only — spans every judge). */
 export async function getJudgeProgress(db: Pick<PrismaClient, "judgeAssignment" | "judgeEvaluation">) {
   const [assignments, evaluations] = await Promise.all([
-    db.judgeAssignment.findMany({ select: { judgeId: true, teamId: true } }),
+    db.judgeAssignment.findMany({ where: { team: { disqualifiedAt: null } }, select: { judgeId: true, teamId: true } }),
     db.judgeEvaluation.findMany({ select: { judgeId: true, teamId: true, status: true } }),
   ]);
   return progressByJudge(assignments, evaluations);

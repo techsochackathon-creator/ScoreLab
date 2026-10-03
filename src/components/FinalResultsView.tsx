@@ -30,6 +30,24 @@ export function FinalResultsView({ state }: { state: OfficialState }) {
         <div className="nums text-2xl font-bold text-ink">{fmt(winner.judgeScore)}</div>
       </section>
 
+      {(snapshot.disqualified?.length ?? 0) > 0 && (
+        <section className="card mb-4 p-4" aria-label="Disqualified teams">
+          <div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-ink-3">Disqualified — not ranked</div>
+          <ul className="divide-y divide-[var(--glass-border)]">
+            {snapshot.disqualified!.map((t) => (
+              <li key={t.teamId} className="flex items-center gap-3 py-1.5 text-sm">
+                <span className="mono w-28 shrink-0 text-xs text-ink-3">{t.teamCode}</span>
+                <span className="min-w-0 flex-1 truncate text-ink-2">{t.teamName}</span>
+                <span className="status-pill status-failed">
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: "currentColor" }} />
+                  Disqualified
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">

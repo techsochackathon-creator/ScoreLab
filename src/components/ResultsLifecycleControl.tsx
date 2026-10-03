@@ -74,10 +74,10 @@ export function ResultsLifecycleControl(props: Props) {
     <section className="card mb-4 p-5" aria-labelledby="lifecycle-title">
       <LifecycleSteps phase={publishedAt ? "PUBLISHED" : "FINALIZED"} className="mb-3" />
       <div className="flex flex-wrap items-start gap-3">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[16rem] flex-1">
           <h2 id="lifecycle-title" className="text-lg font-bold text-ink">{publishedAt ? "Results Published" : "Results Finalized"}</h2>
           <p className="mt-0.5 text-sm text-ink-2">
-            Finalized {when(props.finalizedAt)}. The official scores and winner are frozen and cannot be changed.
+            Finalized {when(props.finalizedAt)}. The official scores and winner are frozen; they only change if you reopen judging and finalize again.
           </p>
           <p className="mt-1 text-sm text-ink-2">
             {publishedAt ? (
@@ -90,31 +90,45 @@ export function ResultsLifecycleControl(props: Props) {
             )}
           </p>
         </div>
-        {publishedAt ? (
+        <div className="flex flex-wrap gap-2">
+          {publishedAt ? (
+            <button
+              onClick={() => call(
+                "/api/organizer/results/publish", "DELETE",
+                "Unpublish results?\n\nThe public leaderboard will stop showing results. The finalized scores and winner are not changed.",
+                "Results unpublished",
+              )}
+              disabled={busy}
+              className="btn-ghost"
+            >
+              Unpublish
+            </button>
+          ) : (
+            <button
+              onClick={() => call(
+                "/api/organizer/results/publish", "POST",
+                "Publish results?\n\nPublishing makes the finalized results visible on the public leaderboard to anyone with the link.",
+                "Results published",
+              )}
+              disabled={busy}
+              className="btn-primary"
+            >
+              {busy ? "Publishing…" : "Publish Results"}
+            </button>
+          )}
           <button
             onClick={() => call(
-              "/api/organizer/results/publish", "DELETE",
-              "Unpublish results?\n\nThe public leaderboard will stop showing results. The finalized scores and winner are not changed.",
-              "Results unpublished",
+              "/api/organizer/results/reopen", "POST",
+              "Reopen judging?\n\nThis DELETES the frozen official result — the final ranking, winner and scores — and unpublishes the public leaderboard.\n\nKept: all judge evaluations, assignments, teams and the rubric. Submitted evaluations stay locked.\n\nAfterwards you can disqualify teams or finish judging, then finalize again.",
+              "Judging reopened",
             )}
             disabled={busy}
             className="btn-ghost"
+            style={{ color: "var(--bad)" }}
           >
-            Unpublish
+            {busy ? "Reopening…" : "Reopen judging"}
           </button>
-        ) : (
-          <button
-            onClick={() => call(
-              "/api/organizer/results/publish", "POST",
-              "Publish results?\n\nPublishing makes the finalized results visible on the public leaderboard to anyone with the link.",
-              "Results published",
-            )}
-            disabled={busy}
-            className="btn-primary"
-          >
-            {busy ? "Publishing…" : "Publish Results"}
-          </button>
-        )}
+        </div>
       </div>
     </section>
   );

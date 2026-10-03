@@ -97,6 +97,21 @@ export default async function LeaderboardPage() {
               </div>
             </div>
 
+            {results.disqualified.length > 0 && (
+              <section className="card mt-4 p-4" aria-label="Disqualified teams">
+                <div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-ink-3">Disqualified teams</div>
+                <ul className="divide-y divide-[var(--glass-border)]">
+                  {results.disqualified.map((t) => (
+                    <li key={t.teamCode} className="flex flex-wrap items-center gap-2 py-1.5 text-sm">
+                      <span className="text-ink-2">{t.teamName}</span>
+                      <span className="mono whitespace-nowrap text-xs text-ink-3">{t.teamCode}</span>
+                      <span className="ml-auto text-xs text-ink-3">Not ranked</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
             <p className="mt-4 text-center text-xs text-ink-3">
               Final results · published {results.publishedAt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
             </p>

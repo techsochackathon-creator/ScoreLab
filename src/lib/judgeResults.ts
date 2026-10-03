@@ -15,6 +15,10 @@ import type { PrismaClient } from "@prisma/client";
  * Winner: the team with the unique highest official score, automatically.
  * If the highest score is shared, the result is a TIE and there is no winner —
  * nothing (AI score, team id, name, random) is used to pick one.
+ *
+ * Disqualified teams (Team.disqualifiedAt) are set aside BEFORE any ranking:
+ * they get no score or rank, cannot win or tie, and are not required for
+ * finalization. They are listed separately in `disqualified`.
  */
 
 export type JudgeResultsDb = Pick<PrismaClient, "team" | "judgeEvaluation" | "judgeAssignment">;
@@ -33,6 +37,14 @@ export interface TeamResult {
   rank: number | null;
   /** Other teams with exactly the same official score. */
   tiedWith: string[];
+}
+
+export interface DisqualifiedTeam {
+  teamId: string;
+  teamCode: string;
+  name: string;
+  /** Organizer-only explanation. */
+  reason: string | null;
 }
 
 export interface TieGroup {
@@ -56,6 +68,8 @@ export interface JudgeResults {
   incomplete: TeamResult[];
   /** Every group of teams sharing a score, at any rank. */
   ties: TieGroup[];
+  /** Teams excluded from the ranking by an organizer. */
+  disqualified: DisqualifiedTeam[];
 }
 
 // ---------------------------------------------------------------------------
@@ -79,12 +93,26 @@ export function officialJudgeScore(finalScores: number[]): number | null {
 }
 
 export interface ResultsInput {
-  teams: { id: string; teamCode: string; name: string; projectTitle: string | null }[];
+  teams: {
+    id: string;
+    teamCode: string;
+    name: string;
+    projectTitle: string | null;
+    /** Set when disqualified; omitted/null for ordinary teams. */
+    disqualifiedAt?: Date | null;
+    disqualifiedReason?: string | null;
+  }[];
   evaluations: { teamId: string; judgeId: string; status: string; finalScore: number | null }[];
   assignments: { teamId: string; judgeId: string }[];
 }
 
-export function buildJudgeResults({ teams, evaluations, assignments }: ResultsInput): JudgeResults {
+export function buildJudgeResults({ teams: allTeams, evaluations, assignments }: ResultsInput): JudgeResults {
+  const teams = allTeams.filter((t) => !t.disqualifiedAt);
+  const disqualified: DisqualifiedTeam[] = allTeams
+    .filter((t) => t.disqualifiedAt)
+    .map((t) => ({ teamId: t.id, teamCode: t.teamCode, name: t.name, reason: t.disqualifiedReason ?? null }))
+    .sort((a, b) => a.teamCode.localeCompare(b.teamCode));
+
   const submittedByTeam = new Map<string, Map<string, number>>(); // teamId → judgeId → cents
   const draftsByTeam = new Map<string, Set<string>>();
   for (const e of evaluations) {
@@ -149,6 +177,7 @@ export function buildJudgeResults({ teams, evaluations, assignments }: ResultsIn
     ranked,
     incomplete,
     ties,
+    disqualified,
   };
 }
 
@@ -159,7 +188,10 @@ export function buildJudgeResults({ teams, evaluations, assignments }: ResultsIn
 /** Always computed from the database — nothing client-supplied is used. */
 export async function getJudgeResults(db: JudgeResultsDb): Promise<JudgeResults> {
   const [teams, evaluations, assignments] = await Promise.all([
-    db.team.findMany({ select: { id: true, teamCode: true, name: true, projectTitle: true }, orderBy: { teamCode: "asc" } }),
+    db.team.findMany({
+      select: { id: true, teamCode: true, name: true, projectTitle: true, disqualifiedAt: true, disqualifiedReason: true },
+      orderBy: { teamCode: "asc" },
+    }),
     db.judgeEvaluation.findMany({ select: { teamId: true, judgeId: true, status: true, finalScore: true } }),
     db.judgeAssignment.findMany({ select: { teamId: true, judgeId: true } }),
   ]);

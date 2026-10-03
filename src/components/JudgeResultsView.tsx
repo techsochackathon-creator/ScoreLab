@@ -4,6 +4,7 @@ import type { JudgeResults } from "@/lib/judgeResults";
 import { officialStatus, type OfficialStatus } from "@/lib/officialResults";
 import { ResultsLifecycleControl } from "@/components/ResultsLifecycleControl";
 import { JudgingProgressPanel } from "@/components/JudgingProgressPanel";
+import { DisqualifyPanel } from "@/components/DisqualifyPanel";
 import type { JudgingProgress } from "@/lib/officialResults";
 
 const fmt = (n: number | null) => (n === null ? "—" : n.toFixed(2));
@@ -33,6 +34,11 @@ export function JudgeResultsView({ results, blockers, progress }: { results: Jud
       <ResultsLifecycleControl phase="JUDGING_OPEN" blockers={blockers} />
 
       <JudgingProgressPanel progress={progress} finalized={false} readinessLink={false} />
+
+      <DisqualifyPanel
+        teams={[...results.ranked, ...results.incomplete].map((t) => ({ teamId: t.teamId, teamCode: t.teamCode, name: t.name })).sort((a, b) => a.teamCode.localeCompare(b.teamCode))}
+        disqualified={results.disqualified.map((t) => ({ teamId: t.teamId, teamCode: t.teamCode, name: t.name, reason: t.reason }))}
+      />
 
       <h2 className="mb-2 mt-6 text-sm font-semibold uppercase tracking-wider text-ink-3">Live standings (not final)</h2>
 

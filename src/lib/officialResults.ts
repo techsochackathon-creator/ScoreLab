@@ -49,6 +49,8 @@ export interface FinalSnapshot {
   winnerTeamId: string;
   /** Rank order. */
   teams: FinalSnapshotTeam[];
+  /** Teams an organizer disqualified before finalizing: listed, never scored or ranked. No reason is stored. */
+  disqualified?: { teamId: string; teamCode: string; teamName: string }[];
 }
 
 const joinCodes = (codes: string[]) =>
@@ -126,6 +128,7 @@ export function buildFinalSnapshot(results: JudgeResults): FinalSnapshot {
       rank: t.rank!,
       isWinner: t.teamId === results.winnerTeamId,
     })),
+    disqualified: results.disqualified.map((t) => ({ teamId: t.teamId, teamCode: t.teamCode, teamName: t.name })),
   };
 }
 
@@ -195,6 +198,8 @@ export interface PublicResultRow {
 export interface PublicResults {
   winner: { teamCode: string; teamName: string; judgeScore: number };
   rows: PublicResultRow[];
+  /** Disqualified teams: name and code only — no score, no rank, no reason. */
+  disqualified: { teamCode: string; teamName: string }[];
 }
 
 /** Public view of the final snapshot — rank, team code/name, score, winner flag. Nothing else. */
@@ -207,7 +212,11 @@ export function toPublicResults(snapshot: FinalSnapshot): PublicResults {
     status: t.isWinner ? "WINNER" : "RANKED",
   }));
   const w = snapshot.teams.find((t) => t.isWinner)!;
-  return { winner: { teamCode: w.teamCode, teamName: w.teamName, judgeScore: w.judgeScore }, rows };
+  return {
+    winner: { teamCode: w.teamCode, teamName: w.teamName, judgeScore: w.judgeScore },
+    rows,
+    disqualified: (snapshot.disqualified ?? []).map((t) => ({ teamCode: t.teamCode, teamName: t.teamName })),
+  };
 }
 
 /** Public results from the snapshot, or `{ published: false }` until finalized AND published. */
@@ -236,4 +245,22 @@ export async function publishResults(db: Pick<PrismaClient, "resultsPublication"
 /** Hide the public leaderboard again. The finalized snapshot is unchanged. */
 export async function unpublishResults(db: Pick<PrismaClient, "resultsPublication">) {
   await db.resultsPublication.updateMany({ where: { slot: "OFFICIAL" }, data: { publishedAt: null, publishedById: null } });
+}
+
+/**
+ * Reopen judging: delete the finalized official result (and with it the
+ * publication), so judging is open again. ONLY the ResultsPublication row is
+ * removed — judge evaluations, assignments, teams and the rubric are untouched,
+ * and SUBMITTED evaluations stay locked. Serialized against finalization and
+ * every guarded write by the same exclusive lock. 409 if nothing is finalized.
+ */
+export async function reopenJudging(db: Pick<PrismaClient, "$transaction" | "resultsPublication">) {
+  await db.$transaction(
+    async (tx) => {
+      await lockJudgingExclusive(tx);
+      const { count } = await tx.resultsPublication.deleteMany({});
+      if (count === 0) throw new JudgeServiceError(409, "Judging is not finalized, so there is nothing to reopen.");
+    },
+    { timeout: 30_000, maxWait: 15_000 },
+  );
 }
