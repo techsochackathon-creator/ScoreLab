@@ -179,7 +179,7 @@ function QuickAction({ href, icon, label, primary }: { href: string; icon: IconN
     <Link
       href={href}
       className="card-interactive flex flex-col items-center gap-2.5 px-4 py-5 text-center"
-      style={primary ? { borderColor: "rgba(16, 185, 129, 0.15)", boxShadow: "var(--glow-brand-sm)" } : undefined}
+      style={primary ? { borderColor: "rgba(147, 133, 255, 0.22)", boxShadow: "var(--glow-brand-sm)" } : undefined}
     >
       <span
         className="grid h-10 w-10 place-items-center rounded-xl"
