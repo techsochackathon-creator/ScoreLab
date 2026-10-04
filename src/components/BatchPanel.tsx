@@ -326,8 +326,8 @@ export function BatchPanel({ teamCount }: { teamCount: number }) {
     <div className="fade-in-up">
       {/* Header */}
       <header className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-ink">Batch Evaluation</h1>
-        <p className="mt-1 text-sm text-ink-2">
+        <h1 className="page-title">Batch Evaluation</h1>
+        <p className="page-sub">
           Evaluate all teams at once. Progress updates live while the batch runs.
         </p>
       </header>

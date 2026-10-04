@@ -2,7 +2,7 @@
 
 /**
  * Lightweight, dependency-free SVG charts. All derive from real data passed in.
- * Premium dark AI aesthetic with animated bars and gradient fills.
+ * Flat fills on the brand colour; no glow or gradients.
  */
 
 /** Vertical bar histogram (score distribution). */
@@ -19,8 +19,7 @@ export function Histogram({ bins, labels, height = 180 }: { bins: number[]; labe
               style={{
                 height: `${(v / maxV) * 100}%`,
                 minHeight: v > 0 ? 4 : 0,
-                background: "linear-gradient(180deg, var(--brand), rgba(147, 133, 255, 0.3))",
-                boxShadow: v > 0 ? "0 0 8px rgba(147, 133, 255, 0.18)" : "none",
+                background: "var(--brand)",
                 animationDelay: `${i * 60}ms`,
               }}
             />
@@ -50,9 +49,8 @@ export function BarList({ items, max = 100, unit = "" }: { items: { label: strin
               className="h-full rounded-full"
               style={{
                 width: `${Math.min(100, (it.value / max) * 100)}%`,
-                background: it.color ? `linear-gradient(90deg, ${it.color}, ${it.color}88)` : "linear-gradient(90deg, var(--brand), var(--brand)88)",
+                background: it.color ?? "var(--brand)",
                 transition: "width 700ms cubic-bezier(0.22,1,0.36,1)",
-                boxShadow: `0 0 6px ${it.color ?? "var(--brand)"}30`,
               }}
             />
           </div>
@@ -90,13 +88,13 @@ export function RadarChart({
   return (
     <svg width={size} height={size} className="mx-auto">
       {rings.map((r) => (
-        <polygon key={r} points={gridPath(r)} fill="none" stroke="var(--hair)" strokeWidth={0.5} strokeDasharray={r < 1 ? "2,3" : "0"} />
+        <polygon key={r} points={gridPath(r)} fill="none" stroke="var(--hair-strong)" strokeWidth={0.75} strokeDasharray={r < 1 ? "2,3" : "0"} />
       ))}
       {axes.map((_, i) => {
         const [x, y] = point(i, R);
-        return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="var(--hair)" strokeWidth={0.5} />;
+        return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="var(--hair-strong)" strokeWidth={0.75} />;
       })}
-      <polygon points={dataPath} fill="rgba(147, 133, 255, 0.1)" stroke="var(--brand)" strokeWidth={2} strokeLinejoin="round" />
+      <polygon points={dataPath} fill="var(--brand-tint)" stroke="var(--brand)" strokeWidth={2} strokeLinejoin="round" />
       {values.map((v, i) => {
         const [x, y] = point(i, R * (Math.max(0, Math.min(max, v)) / max));
         return (

@@ -87,10 +87,10 @@ export function JudgesManager({ judges, teams, finalized, children }: { judges: 
 
   return (
     <div className="fade-in-up">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
+      <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink">Judges</h1>
-          <p className="mt-1 text-sm text-ink-2">
+          <h1 className="page-title">Judges</h1>
+          <p className="page-sub">
             Create judge accounts and choose which teams each judge can see.
           </p>
         </div>
@@ -103,7 +103,7 @@ export function JudgesManager({ judges, teams, finalized, children }: { judges: 
 
       {adding && (
         <div className="card mb-4 p-4">
-          <h2 className="mb-3 text-sm font-semibold text-ink">New judge</h2>
+          <h2 className="mb-3 card-title">New judge</h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <label><span className="label">Name</span><input className="field" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="e.g. Dr. Ayesha Malik" /></label>
             <label><span className="label">Email (login)</span><input className="field" type="email" value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} placeholder="judge@example.com" autoComplete="off" /></label>
@@ -121,14 +121,14 @@ export function JudgesManager({ judges, teams, finalized, children }: { judges: 
         <EmptyState icon="judges" title="No judges yet" description="Add a judge account, then assign the teams they should evaluate." />
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
-          <div className="card overflow-hidden self-start">
+          <div className="card overflow-hidden self-start" role="group" aria-label="Judges">
             <div className="divide-y divide-[var(--glass-border)]">
               {judges.map((j) => (
                 <button
                   key={j.id}
                   onClick={() => setSelectedId(j.id)}
-                  className="flex w-full flex-wrap items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-2"
-                  style={j.id === selectedId ? { background: "var(--surface-2)" } : undefined}
+                  className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 text-left transition-colors hover:bg-surface-2"
+                  style={j.id === selectedId ? { background: "var(--brand-tint)", boxShadow: "inset 3px 0 0 var(--brand)" } : undefined}
                   aria-current={j.id === selectedId}
                 >
                   <div className="min-w-0 flex-1">
@@ -136,15 +136,14 @@ export function JudgesManager({ judges, teams, finalized, children }: { judges: 
                     <div className="truncate text-xs text-ink-3">{j.email}</div>
                   </div>
                   <ActivePill active={j.active} />
-                  <div className="w-28 shrink-0 text-right">
-                    <div className="nums text-xs text-ink-2">
-                      <span className="font-semibold text-ink">{j.progress.submitted}</span>/{j.progress.assigned} submitted
-                      <span className="ml-1 text-ink-3">{j.progress.percent}%</span>
+                  <div className="w-full">
+                    <div className="nums mb-1 flex items-baseline justify-between gap-2 text-xs text-ink-3">
+                      <span>
+                        <span className="font-semibold text-ink">{j.progress.submitted}</span>/{j.progress.assigned} submitted · {j.progress.draft} draft · {j.progress.notStarted} not started
+                      </span>
+                      <span className="font-medium text-ink-2">{j.progress.percent}%</span>
                     </div>
-                    <ProgressBar value={j.progress.percent} height={4} className="mt-1" label={`${j.name || j.email}: evaluations submitted`} />
-                    <div className="mt-0.5 text-[10px] text-ink-3">
-                      {j.progress.draft} draft · {j.progress.notStarted} not started
-                    </div>
+                    <ProgressBar value={j.progress.percent} height={4} label={`${j.name || j.email}: evaluations submitted`} />
                   </div>
                 </button>
               ))}
@@ -271,19 +270,19 @@ The judge will no longer see this team. This is only possible because they have 
           </span>
         }>Assigned teams</SectionTitle>
         {finalized && (
-          <p className="mb-2 text-xs" style={{ color: "var(--warn)" }}>Judging is finalized — assignments can no longer be changed.</p>
+          <p className="notice notice-warn mb-3 py-2 text-xs">Judging is finalized — assignments can no longer be changed.</p>
         )}
         {assigned.length === 0 ? (
           <p className="py-3 text-sm text-ink-3">No teams assigned yet.</p>
         ) : (
           <ul className="divide-y divide-[var(--glass-border)]">
             {assigned.map((t) => (
-              <li key={t.id} className="flex items-center gap-3 py-2">
+              <li key={t.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
                 <span className="mono w-28 shrink-0 text-xs text-ink-3">{t.teamCode}</span>
                 <span className="min-w-0 flex-1 truncate text-sm text-ink">{t.name}</span>
                 <EvalPill status={judge.statusByTeam[t.id] ?? "NOT_STARTED"} />
                 {!finalized && (judge.statusByTeam[t.id] ?? "NOT_STARTED") === "NOT_STARTED" ? (
-                  <button onClick={() => unassign(t)} disabled={busy} className="text-xs font-medium text-ink-2 hover:text-bad">Remove</button>
+                  <button onClick={() => unassign(t)} disabled={busy} className="rounded px-1.5 py-1 text-xs font-medium text-ink-2 transition-colors hover:bg-bad/10 hover:text-[var(--bad-text)]" aria-label={`Remove ${t.teamCode}`}>Remove</button>
                 ) : !finalized ? (
                   <span className="text-[11px] text-ink-3" title="The judge has started this evaluation, so the assignment is kept.">Kept</span>
                 ) : null}
@@ -301,17 +300,17 @@ The judge will no longer see this team. This is only possible because they have 
           <p className="text-sm text-ink-3">{teams.length === 0 ? "No teams exist yet." : "Every team is already assigned to this judge."}</p>
         ) : (
           <>
-            <input className="field mb-2" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter by team ID or name" />
-            <div className="max-h-64 overflow-y-auto rounded-lg border border-[var(--glass-border)]">
+            <input className="field mb-2" aria-label="Filter teams" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter by team ID or name" />
+            <div className="max-h-64 overflow-y-auto rounded-md border border-hair">
               {available.length === 0 ? (
                 <p className="px-3 py-3 text-sm text-ink-3">No matching teams.</p>
               ) : (
                 available.map((t) => (
-                  <label key={t.id} className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-surface-2">
+                  <label key={t.id} className="flex cursor-pointer items-center gap-3 border-b border-hair px-3 py-2 last:border-b-0 hover:bg-surface-2">
                     <input type="checkbox" checked={picked.has(t.id)} onChange={() => togglePick(t.id)} />
                     <span className="mono w-28 shrink-0 text-xs text-ink-3">{t.teamCode}</span>
                     <span className="min-w-0 flex-1 truncate text-sm text-ink">{t.name}</span>
-                    <span className={`nums shrink-0 text-xs ${t.judgeCount === 0 ? "font-semibold" : "text-ink-3"}`} style={t.judgeCount === 0 ? { color: "var(--warn)" } : undefined}>
+                    <span className={`nums shrink-0 text-xs ${t.judgeCount === 0 ? "font-semibold" : "text-ink-3"}`} style={t.judgeCount === 0 ? { color: "var(--warn-text)" } : undefined}>
                       {t.judgeCount === 0 ? "no judges yet" : `${t.judgeCount} judge${t.judgeCount === 1 ? "" : "s"}`}
                     </span>
                   </label>

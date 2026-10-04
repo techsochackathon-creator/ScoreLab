@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon, type IconName } from "@/components/ui/icons";
+import { Logo } from "@/components/ui/Logo";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { SignOutButton } from "@/components/SignOutButton";
 import { CommandPalette } from "@/components/shell/CommandPalette";
@@ -14,85 +15,109 @@ interface NavItem {
   icon: IconName;
 }
 
-const NAV: NavItem[] = [
-  { href: "/organizer/dashboard", label: "Overview", icon: "overview" },
-  { href: "/organizer/teams", label: "Teams", icon: "teams" },
-  { href: "/organizer/evaluations", label: "Evaluations", icon: "evaluations" },
-  { href: "/organizer/batch", label: "Batch", icon: "spark" },
-  { href: "/organizer/judges", label: "Judges", icon: "judges" },
-  { href: "/organizer/results", label: "Results", icon: "leaderboard" },
-  { href: "/organizer/rubric", label: "Rubric", icon: "rubric" },
-  { href: "/leaderboard", label: "Leaderboard", icon: "leaderboard" },
-  { href: "/organizer/analytics", label: "Analytics", icon: "analytics" },
+/** Grouped by job: run the event, judge it, then the AI reference tooling. */
+const NAV: { label?: string; items: NavItem[] }[] = [
+  { items: [{ href: "/organizer/dashboard", label: "Overview", icon: "overview" }] },
+  {
+    label: "Manage",
+    items: [
+      { href: "/organizer/teams", label: "Teams", icon: "teams" },
+      { href: "/organizer/judges", label: "Judges", icon: "judges" },
+      { href: "/organizer/rubric", label: "Rubric", icon: "rubric" },
+    ],
+  },
+  {
+    label: "Results",
+    items: [
+      { href: "/organizer/results", label: "Results", icon: "integrity" },
+      { href: "/leaderboard", label: "Leaderboard", icon: "leaderboard" },
+    ],
+  },
+  {
+    label: "AI evaluation",
+    items: [
+      { href: "/organizer/evaluations", label: "Evaluations", icon: "evaluations" },
+      { href: "/organizer/batch", label: "Batch", icon: "spark" },
+      { href: "/organizer/analytics", label: "Analytics", icon: "analytics" },
+    ],
+  },
 ];
-
-function Logo() {
-  return (
-    <Link href="/organizer/dashboard" className="flex items-center gap-2.5 px-1 group">
-      <span
-        className="grid h-8 w-8 place-items-center rounded-lg text-[13px] font-extrabold transition-shadow"
-        style={{ background: "var(--gradient-brand)", color: "var(--brand-fg)", boxShadow: "var(--glow-brand-sm)" }}
-      >
-        S
-      </span>
-      <span className="text-[15px] font-bold tracking-tight text-ink">
-        Score<span style={{ color: "var(--brand)" }}>Lab</span>
-      </span>
-    </Link>
-  );
-}
 
 function NavLinks({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
   return (
-    <nav className="flex flex-col gap-0.5">
-      {NAV.map((n) => {
-        const I = Icon[n.icon];
-        const active = isActive(n.href);
-        return (
-          <Link
-            key={n.href}
-            href={n.href}
-            onClick={onNavigate}
-            data-active={active}
-            aria-current={active ? "page" : undefined}
-            className="nav-item"
-          >
-            <span className="nav-icon"><I size={16} /></span>
-            {n.label}
-          </Link>
-        );
-      })}
+    <nav aria-label="Organizer" className="flex flex-col">
+      {NAV.map((group, gi) => (
+        <div key={group.label ?? gi} role="group" aria-label={group.label}>
+          {group.label && <div className="nav-group-label">{group.label}</div>}
+          <div className="flex flex-col gap-0.5">
+            {group.items.map((n) => {
+              const I = Icon[n.icon];
+              const active = isActive(n.href);
+              return (
+                <Link
+                  key={n.href}
+                  href={n.href}
+                  onClick={onNavigate}
+                  data-active={active}
+                  aria-current={active ? "page" : undefined}
+                  className="nav-item"
+                >
+                  <span className="nav-icon"><I size={16} /></span>
+                  {n.label}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      ))}
     </nav>
   );
 }
 
-/** AI platform status card at bottom of sidebar. */
+/** AI engine status line at the bottom of the sidebar. */
 function AiStatusCard() {
   return (
-    <div
-      className="rounded-lg p-3"
-      style={{
-        background: "var(--surface-2)",
-        border: "1px solid var(--glass-border)",
-      }}
-    >
-      <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 px-3 py-1.5 text-xs">
+      <Icon.spark size={14} className="shrink-0 text-ink-3" />
+      <span className="min-w-0 flex-1 truncate text-ink-3" title="Gemini-powered evaluation engine">AI engine · Gemini</span>
+      <span className="flex shrink-0 items-center gap-1.5 font-medium" style={{ color: "var(--good-text)" }}>
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--good)" }} />
+        Active
+      </span>
+    </div>
+  );
+}
+
+function SidebarFooter({ pathname, email, onNavigate }: { pathname: string; email?: string | null; onNavigate?: () => void }) {
+  const settingsActive = pathname.startsWith("/organizer/settings");
+  return (
+    <div className="mt-2 flex flex-col gap-1 border-t border-hair pt-2">
+      <AiStatusCard />
+      <Link
+        href="/organizer/settings"
+        onClick={onNavigate}
+        data-active={settingsActive}
+        aria-current={settingsActive ? "page" : undefined}
+        className="nav-item"
+      >
+        <span className="nav-icon"><Icon.settings size={16} /></span>
+        Settings
+      </Link>
+      <SignOutButton full />
+      <div className="mt-1 flex items-center gap-2.5 border-t border-hair px-3 pb-1 pt-3">
         <span
-          className="grid h-6 w-6 place-items-center rounded-md"
-          style={{ background: "var(--brand-tint)" }}
+          aria-hidden
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-semibold"
+          style={{ background: "var(--surface-2)", color: "var(--ink-2)", border: "1px solid var(--hair-strong)" }}
         >
-          <Icon.spark size={12} style={{ color: "var(--brand)" }} />
+          {(email ?? "?").charAt(0).toUpperCase()}
         </span>
-        <span className="text-xs font-semibold text-ink">AI Engine</span>
-        <span className="ml-auto flex items-center gap-1 text-[10px] font-medium" style={{ color: "var(--good)" }}>
-          <span className="h-1.5 w-1.5 rounded-full pulse-glow" style={{ background: "var(--good)" }} />
-          Active
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-xs font-medium text-ink-2">{email ?? "Organizer"}</span>
+          <span className="block text-[11px] text-ink-3">Organizer</span>
         </span>
       </div>
-      <p className="mt-1.5 text-[10px] leading-relaxed text-ink-3">
-        Gemini-powered evaluation engine
-      </p>
     </div>
   );
 }
@@ -106,87 +131,40 @@ export function Shell({ children, email }: { children: React.ReactNode; email?: 
       <CommandPalette />
 
       {/* ── Desktop sidebar ── */}
-      <aside
-        className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col px-3 py-4 lg:flex"
-        style={{
-          background: "var(--glass-bg)",
-          borderRight: "1px solid var(--glass-border)",
-          backdropFilter: "blur(20px)",
-          WebkitBackdropFilter: "blur(20px)",
-          backgroundImage: "var(--gradient-sidebar)",
-        }}
-      >
-        <div className="h-8 slide-in-left"><Logo /></div>
-
-        <div className="mt-6 flex-1 overflow-y-auto">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-hair bg-sidebar px-3 pb-3 lg:flex">
+        <div className="flex h-14 shrink-0 items-center px-2">
+          <Link href="/organizer/dashboard" aria-label="ScoreLab — overview"><Logo /></Link>
+        </div>
+        <div className="flex-1 overflow-y-auto pt-1">
           <NavLinks pathname={pathname} />
         </div>
-
-        <div className="mt-2 flex flex-col gap-3 border-t border-[var(--glass-border)] pt-3">
-          <AiStatusCard />
-          <Link href="/organizer/settings" data-active={pathname.startsWith("/organizer/settings")} className="nav-item">
-            <span className="nav-icon"><Icon.settings size={16} /></span>
-            Settings
-          </Link>
-          <div className="flex items-center gap-2 rounded-lg px-3 py-2">
-            <span
-              className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-semibold"
-              style={{ background: "var(--brand-tint)", color: "var(--brand)" }}
-            >
-              {(email ?? "?").charAt(0).toUpperCase()}
-            </span>
-            <span className="min-w-0 flex-1 truncate text-xs text-ink-3">{email ?? "Organizer"}</span>
-          </div>
-          <SignOutButton full />
-        </div>
+        <SidebarFooter pathname={pathname} email={email} />
       </aside>
 
       {/* ── Mobile top bar ── */}
-      <header
-        className="sticky top-0 z-40 flex h-14 items-center justify-between px-4 lg:hidden"
-        style={{
-          background: "var(--glass-bg)",
-          borderBottom: "1px solid var(--glass-border)",
-          backdropFilter: "blur(20px)",
-          WebkitBackdropFilter: "blur(20px)",
-        }}
-      >
-        <button onClick={() => setDrawer(true)} aria-label="Open menu" className="grid h-9 w-9 place-items-center rounded-lg text-ink-2 hover:text-ink transition-colors">
+      <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-hair bg-sidebar px-3 lg:hidden">
+        <button onClick={() => setDrawer(true)} aria-label="Open menu" aria-expanded={drawer} className="grid h-9 w-9 place-items-center rounded-md text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink">
           <Icon.menu size={18} />
         </button>
-        <Logo />
+        <Link href="/organizer/dashboard" aria-label="ScoreLab — overview"><Logo /></Link>
         <ThemeToggle />
       </header>
 
       {/* ── Mobile drawer ── */}
       {drawer && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDrawer(false)} />
-          <div
-            className="absolute inset-y-0 left-0 w-72 max-w-[85vw] px-3 py-4 slide-in-left"
-            style={{
-              background: "var(--glass-bg)",
-              borderRight: "1px solid var(--glass-border)",
-              backdropFilter: "blur(20px)",
-              WebkitBackdropFilter: "blur(20px)",
-            }}
-          >
-            <div className="flex items-center justify-between px-1">
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation menu">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setDrawer(false)} />
+          <div className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col border-r border-hair bg-sidebar px-3 pb-3 slide-in-left">
+            <div className="flex h-14 shrink-0 items-center justify-between px-2">
               <Logo />
-              <button onClick={() => setDrawer(false)} aria-label="Close menu" className="grid h-8 w-8 place-items-center rounded-lg text-ink-2 hover:text-ink transition-colors">
+              <button onClick={() => setDrawer(false)} aria-label="Close menu" className="grid h-8 w-8 place-items-center rounded-md text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink">
                 <Icon.close size={18} />
               </button>
             </div>
-            <div className="mt-6">
+            <div className="flex-1 overflow-y-auto pt-1">
               <NavLinks pathname={pathname} onNavigate={() => setDrawer(false)} />
             </div>
-            <div className="mt-3 flex flex-col gap-2 border-t border-[var(--glass-border)] pt-3">
-              <AiStatusCard />
-              <Link href="/organizer/settings" onClick={() => setDrawer(false)} className="nav-item">
-                <span className="nav-icon"><Icon.settings size={16} /></span>Settings
-              </Link>
-              <SignOutButton full />
-            </div>
+            <SidebarFooter pathname={pathname} email={email} onNavigate={() => setDrawer(false)} />
           </div>
         </div>
       )}
@@ -194,21 +172,11 @@ export function Shell({ children, email }: { children: React.ReactNode; email?: 
       {/* ── Main content area ── */}
       <div className="lg:pl-60">
         {/* Desktop top bar */}
-        <div
-          className="sticky top-0 z-30 hidden h-14 items-center justify-between px-6 lg:flex"
-          style={{
-            background: "var(--glass-bg)",
-            borderBottom: "1px solid var(--glass-border)",
-            backdropFilter: "blur(20px)",
-            WebkitBackdropFilter: "blur(20px)",
-          }}
-        >
+        <div className="sticky top-0 z-30 hidden h-14 items-center justify-between gap-4 border-b border-hair bg-bg px-6 lg:flex">
           <CommandTrigger />
-          <div className="flex items-center gap-3">
-            <ThemeToggle />
-          </div>
+          <ThemeToggle />
         </div>
-        <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:py-8">{children}</main>
+        <main className="mx-auto max-w-6xl px-4 py-5 sm:px-6 lg:py-6">{children}</main>
       </div>
     </div>
   );
@@ -218,15 +186,11 @@ function CommandTrigger() {
   return (
     <button
       onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))}
-      className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-ink-3 transition-all hover:text-ink-2"
-      style={{
-        background: "var(--surface-2)",
-        border: "1px solid var(--glass-border)",
-      }}
+      className="flex h-9 w-full max-w-sm items-center gap-2 rounded-md border border-hair-strong bg-surface px-3 text-[13px] text-ink-3 transition-colors hover:border-ink-3 hover:text-ink-2"
     >
-      <Icon.search size={14} />
-      <span>Search teams, evaluations, or anything…</span>
-      <kbd className="mono ml-4 rounded border border-[var(--glass-border)] px-1.5 py-0.5 text-[10px] text-ink-3">⌘K</kbd>
+      <Icon.search size={14} className="shrink-0" />
+      <span className="truncate">Search teams, evaluations…</span>
+      <kbd className="mono ml-auto shrink-0 rounded border border-hair-strong px-1.5 py-0.5 text-[10px] text-ink-3">⌘K</kbd>
     </button>
   );
 }

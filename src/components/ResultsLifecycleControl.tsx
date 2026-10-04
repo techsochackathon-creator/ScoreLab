@@ -31,12 +31,19 @@ export function ResultsLifecycleControl(props: Props) {
   if (props.phase === "JUDGING_OPEN") {
     const ready = props.blockers.length === 0;
     return (
-      <section className="card mb-4 p-5" aria-labelledby="lifecycle-title">
-        <LifecycleSteps phase="JUDGING_OPEN" className="mb-3" />
+      <section className="card mb-4 overflow-hidden" aria-labelledby="lifecycle-title">
+        <div className="border-b border-hair px-5 py-3"><LifecycleSteps phase="JUDGING_OPEN" /></div>
+        <div className="p-5">
         <div className="flex flex-wrap items-start gap-3">
           <div className="min-w-0 flex-1">
-            <h2 id="lifecycle-title" className="text-lg font-bold text-ink">Judging Open</h2>
-            <p className="mt-0.5 text-sm text-ink-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 id="lifecycle-title" className="text-lg font-semibold text-ink">Judging Open</h2>
+              <span className={`status-pill ${ready ? "status-completed" : "status-review"}`}>
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: "currentColor" }} />
+                {ready ? "Ready to finalize" : "Not ready"}
+              </span>
+            </div>
+            <p className="mt-1 text-sm text-ink-2">
               {ready
                 ? "Ready to finalize: every team has a submitted evaluation and there is a unique highest score."
                 : `Not ready to finalize — ${props.blockers.length} issue${props.blockers.length === 1 ? "" : "s"} to resolve:`}
@@ -56,27 +63,34 @@ export function ResultsLifecycleControl(props: Props) {
           </button>
         </div>
         {!ready && (
-          <ul id="finalize-blockers" className="mt-3 space-y-1.5 text-sm">
+          <ul id="finalize-blockers" className="notice notice-warn mt-4 space-y-1.5">
             {props.blockers.map((b) => (
-              <li key={b} className="flex gap-2" style={{ color: "var(--warn)" }}>
+              <li key={b} className="flex gap-2">
                 <span aria-hidden>⚠</span>
                 <span>{b.replace(/^Cannot finalize: /, "")}</span>
               </li>
             ))}
           </ul>
         )}
+        </div>
       </section>
     );
   }
 
   const { publishedAt } = props;
   return (
-    <section className="card mb-4 p-5" aria-labelledby="lifecycle-title">
-      <LifecycleSteps phase={publishedAt ? "PUBLISHED" : "FINALIZED"} className="mb-3" />
-      <div className="flex flex-wrap items-start gap-3">
-        <div className="min-w-[16rem] flex-1">
-          <h2 id="lifecycle-title" className="text-lg font-bold text-ink">{publishedAt ? "Results Published" : "Results Finalized"}</h2>
-          <p className="mt-0.5 text-sm text-ink-2">
+    <section className="card mb-4 overflow-hidden" aria-labelledby="lifecycle-title">
+      <div className="border-b border-hair px-5 py-3"><LifecycleSteps phase={publishedAt ? "PUBLISHED" : "FINALIZED"} /></div>
+      <div className="flex flex-wrap items-start gap-3 p-5">
+        <div className="min-w-0 flex-1 basis-64">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 id="lifecycle-title" className="text-lg font-semibold text-ink">{publishedAt ? "Results Published" : "Results Finalized"}</h2>
+            <span className={`status-pill ${publishedAt ? "status-completed" : "status-brand"}`}>
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: "currentColor" }} />
+              {publishedAt ? "Public" : "Frozen · not public"}
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-ink-2">
             Finalized {when(props.finalizedAt)}. The official scores and winner are frozen; they only change if you reopen judging and finalize again.
           </p>
           <p className="mt-1 text-sm text-ink-2">
@@ -123,8 +137,7 @@ export function ResultsLifecycleControl(props: Props) {
               "Judging reopened",
             )}
             disabled={busy}
-            className="btn-ghost"
-            style={{ color: "var(--bad)" }}
+            className="btn-danger"
           >
             {busy ? "Reopening…" : "Reopen judging"}
           </button>

@@ -47,12 +47,12 @@ export function RubricEditor({ initialName, initialCriteria, locked = false }: {
   return (
     <div className="fade-in-up">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-ink">Rubric</h1>
-        <p className="mt-1 text-sm text-ink-2">Criteria, weights, and anchor descriptions. Applies to all future evaluations.</p>
+        <h1 className="page-title">Rubric</h1>
+        <p className="page-sub">Criteria, weights, and anchor descriptions. Applies to all future evaluations.</p>
       </header>
 
       {locked && (
-        <p className="mb-4 rounded-lg border border-warn/40 px-4 py-3 text-sm" style={{ color: "var(--warn)" }}>
+        <p className="mb-4 notice notice-warn">
           The rubric is locked because judging has already started. Judges score against the criteria below.
         </p>
       )}
@@ -126,7 +126,7 @@ export function RubricEditor({ initialName, initialCriteria, locked = false }: {
         <Icon.plus size={16} /> Add criterion
       </button>
 
-      <div className="sticky bottom-0 mt-8 flex items-center justify-end gap-3 border-t border-hair bg-bg/90 py-4 backdrop-blur">
+      <div className="sticky bottom-0 mt-8 flex items-center justify-end gap-3 border-t border-hair bg-bg py-3">
         <button onClick={save} disabled={saving || !sumOk || criteria.length === 0} className="btn-primary">
           {saving ? "Saving…" : "Save rubric"}
         </button>

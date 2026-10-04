@@ -67,8 +67,8 @@ export function EvaluationsView({ initialSubmissions, teams }: { initialSubmissi
   return (
     <div className="fade-in-up">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-ink">Evaluations</h1>
-        <p className="mt-1 text-sm text-ink-2">Score a repository against the rubric, then review results.</p>
+        <h1 className="page-title">Evaluations</h1>
+        <p className="page-sub">Score a repository against the rubric, then review results.</p>
       </header>
 
       {/* Command panel */}

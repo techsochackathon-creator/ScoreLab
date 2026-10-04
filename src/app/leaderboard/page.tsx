@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { Logo } from "@/components/ui/Logo";
 import { prisma } from "@/lib/prisma";
 import { getPublicResults } from "@/lib/officialResults";
 
@@ -21,49 +22,41 @@ export default async function LeaderboardPage() {
     <div className="min-h-screen bg-bg">
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-5 sm:py-10">
         <div className="flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5" aria-label="ScoreLab home">
-            <span
-              className="grid h-8 w-8 place-items-center rounded-lg text-[13px] font-extrabold"
-              style={{ background: "var(--brand)", color: "var(--brand-fg)" }}
-              aria-hidden
-            >
-              S
-            </span>
-            <span className="text-[15px] font-bold tracking-tight text-ink">
-              Score<span style={{ color: "var(--brand)" }}>Lab</span>
-            </span>
-          </Link>
+          <Link href="/" aria-label="ScoreLab home"><Logo /></Link>
           <ThemeToggle />
         </div>
 
-        <header className="mb-6 mt-8 sm:mt-10">
-          <h1 className="text-2xl font-extrabold tracking-tight text-ink sm:text-3xl">Official Results</h1>
+        <header className="mb-5 mt-8 sm:mt-10">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-[28px]">Official Results</h1>
+            <span className={`status-pill ${results.published ? "status-completed" : "status-queued"}`}>
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: "currentColor" }} />
+              {results.published ? "Final" : "Pending"}
+            </span>
+          </div>
           <p className="mt-1.5 text-sm text-ink-2">Final ranking by average judge score, out of 100.</p>
         </header>
 
         {!results.published ? (
-          <div className="card px-6 py-14 text-center">
-            <div className="text-base font-semibold text-ink">Results have not been published yet.</div>
-            <p className="mt-2 text-sm text-ink-3">The official results will appear here once judging is finalized and the organizer publishes them.</p>
+          <div className="card px-6 py-12 text-center">
+            <div className="card-title">Results have not been published yet.</div>
+            <p className="mx-auto mt-2 max-w-md text-sm text-ink-3">The official results will appear here once judging is finalized and the organizer publishes them.</p>
           </div>
         ) : (
           <>
-            <section
-              className="card mb-4 flex flex-wrap items-center gap-4 p-5"
-              style={{ borderColor: "rgba(251, 191, 36, 0.45)" }}
-              aria-label="Winner"
-            >
-              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-lg font-bold text-white" style={{ background: "var(--gold)" }} aria-hidden>
-                1
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--gold)" }}>Winner</div>
-                <div className="break-words text-lg font-bold text-ink">{results.winner.teamName}</div>
-                <div className="mono text-xs text-ink-3">{results.winner.teamCode}</div>
+            <section className="winner-card mb-4 flex flex-wrap items-center gap-4 p-5 sm:p-6" aria-label="Winner">
+              <span className="rank-badge" aria-hidden>1</span>
+              <div className="min-w-0 flex-1 basis-40">
+                <div className="winner-eyebrow">Winner</div>
+                <div className="mt-0.5 break-words text-xl font-semibold text-ink sm:text-2xl">{results.winner.teamName}</div>
+                <div className="mono mt-0.5 text-xs text-ink-3">{results.winner.teamCode}</div>
               </div>
-              <div className="nums text-2xl font-bold text-ink">
-                {fmt(results.winner.judgeScore)}
-                <span className="ml-0.5 text-sm font-normal text-ink-3">/100</span>
+              <div className="text-right">
+                <div className="score-lg">
+                  {fmt(results.winner.judgeScore)}
+                  <span className="ml-0.5 text-sm font-normal text-ink-3">/100</span>
+                </div>
+                <div className="mt-1 text-xs text-ink-3">final score</div>
               </div>
             </section>
 
@@ -80,13 +73,13 @@ export default async function LeaderboardPage() {
                   </thead>
                   <tbody className="divide-y divide-[var(--glass-border)]">
                     {results.rows.map((r) => (
-                      <tr key={r.teamCode}>
+                      <tr key={r.teamCode} className={r.status === "WINNER" ? "row-winner" : undefined}>
                         <td className="nums px-4 py-3 font-semibold text-ink sm:px-5">{r.rank}</td>
                         <td className="px-4 py-3 sm:px-5">
                           <span className="font-medium text-ink">{r.teamName}</span>
                           <span className="mono ml-2 whitespace-nowrap text-xs text-ink-3">{r.teamCode}</span>
                           {r.status === "WINNER" && (
-                            <span className="ml-2 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-bold text-white" style={{ background: "var(--gold)" }}>WINNER</span>
+                            <span className="tag-gold">WINNER</span>
                           )}
                         </td>
                         <td className="nums px-4 py-3 text-right text-base font-semibold text-ink sm:px-5">{fmt(r.judgeScore)}</td>
@@ -99,7 +92,7 @@ export default async function LeaderboardPage() {
 
             {results.disqualified.length > 0 && (
               <section className="card mt-4 p-4" aria-label="Disqualified teams">
-                <div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-ink-3">Disqualified teams</div>
+                <h2 className="mb-1.5 section-title">Disqualified teams</h2>
                 <ul className="divide-y divide-[var(--glass-border)]">
                   {results.disqualified.map((t) => (
                     <li key={t.teamCode} className="flex flex-wrap items-center gap-2 py-1.5 text-sm">

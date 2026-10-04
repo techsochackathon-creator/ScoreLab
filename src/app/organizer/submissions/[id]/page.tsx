@@ -54,7 +54,7 @@ export default async function SubmissionDetailPage({ params }: { params: Promise
       <header className="mt-3 flex flex-wrap items-start justify-between gap-6 border-b border-[var(--glass-border)] pb-6">
         <div className="min-w-0">
           <div className="mono text-xs text-ink-3">{submission.team.teamCode}</div>
-          <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-ink">{submission.team.name}</h1>
+          <h1 className="mt-0.5 page-title">{submission.team.name}</h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-ink-2">
             <span>{submission.team.university}</span>
             <span className="chip">{submission.team.track}</span>
@@ -74,11 +74,11 @@ export default async function SubmissionDetailPage({ params }: { params: Promise
       </header>
 
       {submission.status === "FAILED" && (
-        <p className="mt-4 rounded-lg border border-bad/40 bg-surface px-4 py-3 text-sm text-bad">{submission.error ?? "Evaluation failed."}</p>
+        <p className="mt-4 notice notice-bad">{submission.error ?? "Evaluation failed."}</p>
       )}
 
       {submission.status === "REVIEW_REQUIRED" && (
-        <div className="mt-4 rounded-lg border border-warn/40 bg-surface px-4 py-3 text-sm" style={{ color: "var(--warn)" }}>
+        <div className="mt-4 notice notice-warn">
           <div className="flex flex-wrap items-center gap-2">
             {submission.flags.map((f) => (
               <span key={f} className="mono rounded border border-warn/40 px-1.5 py-0.5 text-xs">{f}</span>
@@ -143,7 +143,7 @@ export default async function SubmissionDetailPage({ params }: { params: Promise
               <div className="flex items-center justify-between gap-4">
                 <span className="font-semibold text-ink">{s.criterion.name}</span>
                 <div className="flex items-center gap-2">
-                  <span className="mono grid h-7 w-7 place-items-center rounded-md text-sm font-bold text-white" style={{ background: bandVar(s.score, s.criterion.scaleMax) }}>{s.score}</span>
+                  <span className="mono grid h-7 w-7 place-items-center rounded-md text-sm font-bold text-[#0b1120]" style={{ background: bandVar(s.score, s.criterion.scaleMax) }}>{s.score}</span>
                   <span className="mono text-xs text-ink-3">of {s.criterion.scaleMax}</span>
                   <span className="chip mono">weight {s.criterion.weight}%</span>
                 </div>

@@ -10,20 +10,29 @@ const STEPS: { phase: ResultsPhase; label: string }[] = [
 export function LifecycleSteps({ phase, className = "" }: { phase: ResultsPhase; className?: string }) {
   const current = STEPS.findIndex((s) => s.phase === phase);
   return (
-    <ol className={`flex flex-wrap items-center gap-x-2 gap-y-1 text-xs ${className}`} aria-label="Results lifecycle">
+    <ol className={`flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs ${className}`} aria-label="Results lifecycle">
       {STEPS.map((s, i) => {
         const done = i < current;
         const active = i === current;
         return (
           <li key={s.phase} className="flex items-center gap-2" aria-current={active ? "step" : undefined}>
-            {i > 0 && <span aria-hidden className="text-ink-3">→</span>}
+            {i > 0 && <span aria-hidden className="h-px w-4 sm:w-8" style={{ background: done || active ? "var(--brand)" : "var(--hair-strong)" }} />}
             <span
-              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-semibold ${
-                active ? "border-brand text-ink" : done ? "border-[var(--glass-border)] text-ink-2" : "border-[var(--glass-border)] text-ink-3"
-              }`}
-              style={active ? { background: "var(--brand-tint)" } : undefined}
+              aria-hidden
+              className="nums grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold"
+              style={
+                active
+                  ? { background: "var(--brand)", color: "var(--brand-fg)" }
+                  : done
+                    ? { background: "var(--brand-tint)", color: "var(--brand-text)", border: "1px solid rgb(var(--brand-rgb) / 0.4)" }
+                    : { color: "var(--ink-3)", border: "1px solid var(--hair-strong)" }
+              }
             >
-              {done ? "✓" : `${i + 1}.`} {s.label}
+              {done ? "✓" : i + 1}
+            </span>
+            <span className={active ? "font-semibold text-ink" : done ? "font-medium text-ink-2" : "text-ink-3"}>
+              {s.label}
+              {done && <span className="sr-only"> (done)</span>}
               {active && <span className="sr-only"> (current)</span>}
             </span>
           </li>

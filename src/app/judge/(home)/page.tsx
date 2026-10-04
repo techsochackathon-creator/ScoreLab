@@ -5,7 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { isJudgingFinalized } from "@/lib/judges";
 import { listTeamsWithStatus, summarizeProgress, type EvaluationStatus } from "@/lib/judgeEvaluations";
-import { EmptyState, StatCard } from "@/components/ui/misc";
+import { EmptyState } from "@/components/ui/misc";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 
 export const dynamic = "force-dynamic";
@@ -29,9 +29,9 @@ export default async function JudgeDashboardPage() {
 
   return (
     <div className="fade-in-up">
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-ink">My Assigned Teams</h1>
-        <p className="mt-1.5 text-sm text-ink-2">
+      <header className="mb-5">
+        <h1 className="page-title">My Assigned Teams</h1>
+        <p className="page-sub">
           {p.assigned === 0
             ? "You have no teams assigned yet."
             : p.submitted === p.assigned
@@ -41,7 +41,7 @@ export default async function JudgeDashboardPage() {
       </header>
 
       {finalized && (
-        <p className="mb-4 rounded-lg border border-warn/40 px-4 py-3 text-sm" style={{ color: "var(--warn)" }}>
+        <p className="mb-4 notice notice-warn">
           Judging has been finalized. Evaluations can be viewed but no longer changed.
         </p>
       )}
@@ -51,37 +51,40 @@ export default async function JudgeDashboardPage() {
       ) : (
         <>
           {next && (
-            <section className="card mb-4 flex flex-wrap items-center gap-4 p-4" style={{ borderColor: "var(--brand)" }} aria-label="Next evaluation">
-              <div className="min-w-0 flex-1">
-                <div className="text-xs font-semibold uppercase tracking-wider text-ink-3">Next up</div>
-                <div className="mt-0.5 text-base font-semibold text-ink">
+            <section className="card mb-3 flex flex-wrap items-center gap-x-4 gap-y-3 p-4" style={{ borderLeft: "3px solid var(--brand)" }} aria-label="Next evaluation">
+              <div className="min-w-0 flex-1 basis-56">
+                <div className="section-title">Next up</div>
+                <div className="mt-1 text-base font-semibold text-ink">
                   <span className="mono">{next.teamCode}</span>
                   {next.projectTitle && <span className="font-normal text-ink-2"> · {next.projectTitle}</span>}
                 </div>
-                <div className="text-xs text-ink-3">{next.status === "DRAFT" ? "You have a draft in progress." : "Not started yet."}</div>
+                <div className="mt-0.5 text-xs text-ink-3">{next.status === "DRAFT" ? "You have a draft in progress." : "Not started yet."}</div>
               </div>
-              <Link href={`/judge/teams/${next.teamId}`} className="btn-primary">
+              <Link href={`/judge/teams/${next.teamId}`} className="btn-primary w-full sm:w-auto">
                 {next.status === "DRAFT" ? "Continue evaluation" : "Start evaluation"}
               </Link>
             </section>
           )}
 
-          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatCard label="Assigned" value={p.assigned} icon="teams" />
-            <StatCard label="Submitted" value={p.submitted} icon="check" accent />
-            <StatCard label="Drafts" value={p.draft} icon="evaluations" />
-            <StatCard label="Not started" value={p.notStarted} icon="spark" />
-          </div>
-
-          <div className="card mb-4 p-4">
-            <div className="mb-2 flex items-baseline justify-between text-sm">
-              <span className="text-ink-2">Progress</span>
-              <span className="nums font-semibold text-ink">
-                {p.percent}% <span className="font-normal text-ink-3">({p.submitted} of {p.assigned} submitted)</span>
-              </span>
+          <section className="card mb-3 p-4" aria-label="Your progress">
+            <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              {([["Assigned", p.assigned], ["Submitted", p.submitted], ["Drafts", p.draft], ["Not started", p.notStarted]] as const).map(([label, value]) => (
+                <div key={label}>
+                  <dd className="nums text-xl font-semibold leading-none text-ink">{value}</dd>
+                  <dt className="mt-1 text-xs text-ink-3">{label}</dt>
+                </div>
+              ))}
+            </dl>
+            <div className="mt-4 border-t border-hair pt-3">
+              <div className="mb-1.5 flex items-baseline justify-between text-xs">
+                <span className="text-ink-2">Progress</span>
+                <span className="nums font-semibold text-ink">
+                  {p.percent}% <span className="font-normal text-ink-3">({p.submitted} of {p.assigned} submitted)</span>
+                </span>
+              </div>
+              <ProgressBar value={p.percent} color="var(--brand)" height={6} label="Your evaluations submitted" />
             </div>
-            <ProgressBar value={p.percent} color="var(--brand)" height={8} label="Your evaluations submitted" />
-          </div>
+          </section>
 
           <div className="card overflow-hidden">
             <div className="hidden grid-cols-[0.8fr_2fr_0.9fr_auto] gap-4 border-b border-[var(--glass-border)] px-4 py-2.5 text-xs font-medium uppercase tracking-wider text-ink-3 sm:grid">
@@ -92,7 +95,7 @@ export default async function JudgeDashboardPage() {
                 const s = STATUS[t.status];
                 const action = finalized && t.status !== "SUBMITTED" ? "View" : s.action;
                 return (
-                  <div key={t.teamId} className="grid grid-cols-1 gap-2 px-4 py-3 sm:grid-cols-[0.8fr_2fr_0.9fr_auto] sm:items-center sm:gap-4">
+                  <div key={t.teamId} className="grid grid-cols-1 gap-2 px-4 py-3 transition-colors hover:bg-surface-2 sm:grid-cols-[0.8fr_2fr_0.9fr_auto] sm:items-center sm:gap-4 sm:py-2.5">
                     <span className="mono text-sm font-semibold text-ink">{t.teamCode}</span>
                     <span className="min-w-0 truncate text-sm text-ink-2">{t.projectTitle ?? <span className="text-ink-3">—</span>}</span>
                     <span>
@@ -103,7 +106,7 @@ export default async function JudgeDashboardPage() {
                     </span>
                     <Link
                       href={`/judge/teams/${t.teamId}`}
-                      className={`${action === "View" ? "btn-ghost" : "btn-primary"} w-full justify-center sm:w-24`}
+                      className={`${action === "View" || t.teamId !== next?.teamId ? "btn-ghost" : "btn-primary"} w-full justify-center sm:w-24`}
                       aria-label={`${action} evaluation for ${t.teamCode}`}
                     >
                       {action}

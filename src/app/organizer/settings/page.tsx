@@ -23,8 +23,8 @@ export default async function SettingsPage() {
   return (
     <div className="fade-in-up max-w-2xl">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-ink">Settings</h1>
-        <p className="mt-1 text-sm text-ink-2">Appearance, rubric, account and organizers.</p>
+        <h1 className="page-title">Settings</h1>
+        <p className="page-sub">Appearance, rubric, account and organizers.</p>
       </header>
 
       <div className="flex flex-col gap-4">
@@ -59,7 +59,7 @@ export default async function SettingsPage() {
             <div className="flex items-center gap-3">
               <span
                 className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-semibold"
-                style={{ background: "var(--brand-tint)", color: "var(--brand)" }}
+                style={{ background: "var(--brand-tint)", color: "var(--brand-text)" }}
               >
                 {(session?.user.email ?? "?").charAt(0).toUpperCase()}
               </span>

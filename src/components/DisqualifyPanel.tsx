@@ -62,7 +62,7 @@ export function DisqualifyPanel({ teams, disqualified }: { teams: PanelTeam[]; d
               <button
                 onClick={() => { setOpen(open === t.teamId ? null : t.teamId); setReason(""); }}
                 disabled={busy}
-                className="text-xs font-medium text-ink-2 hover:text-bad"
+                className="rounded px-1.5 py-1 text-xs font-medium text-ink-2 transition-colors hover:bg-bad/10 hover:text-[var(--bad-text)]"
                 aria-expanded={open === t.teamId}
                 aria-label={`Disqualify ${t.teamCode}`}
               >
@@ -70,7 +70,7 @@ export function DisqualifyPanel({ teams, disqualified }: { teams: PanelTeam[]; d
               </button>
             </div>
             {open === t.teamId && (
-              <div className="mt-2 flex flex-wrap items-end gap-2 rounded-lg border border-warn/40 p-3" style={{ background: "var(--surface-2)" }}>
+              <div className="notice notice-warn mt-2 flex flex-wrap items-end gap-2 p-3">
                 <label className="min-w-0 flex-1">
                   <span className="label">Reason (kept private, organizers only)</span>
                   <input className="field" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Rule violation: pre-built project" maxLength={500} autoFocus />

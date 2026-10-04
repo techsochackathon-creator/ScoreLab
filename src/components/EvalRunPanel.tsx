@@ -279,8 +279,8 @@ export function EvalRunPanel() {
   return (
     <div className="fade-in-up">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-ink">Evaluation Runs</h1>
-        <p className="mt-1 text-sm text-ink-2">
+        <h1 className="page-title">Evaluation Runs</h1>
+        <p className="page-sub">
           Create, finalize, and publish evaluation runs. The public leaderboard shows only the published run.
         </p>
       </header>
@@ -680,8 +680,8 @@ function ReadinessPill({ label, value, ok, warn }: { label: string; value: numbe
 function ConfirmDialog({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative mx-4 w-full max-w-lg rounded-xl p-6 shadow-xl fade-in-up" style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", backdropFilter: "blur(var(--glass-blur))", WebkitBackdropFilter: "blur(var(--glass-blur))" }}>
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative mx-4 w-full max-w-lg rounded-lg p-6 fade-in-up" style={{ background: "var(--surface)", border: "1px solid var(--hair-strong)", boxShadow: "var(--shadow-lg)" }}>
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-ink">{title}</h3>
           <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-ink-3 hover:text-ink">

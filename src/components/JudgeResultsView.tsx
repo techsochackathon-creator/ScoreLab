@@ -10,7 +10,7 @@ import type { JudgingProgress } from "@/lib/officialResults";
 const fmt = (n: number | null) => (n === null ? "—" : n.toFixed(2));
 
 const STATUS_LABEL: Record<OfficialStatus, { label: string; pill: string }> = {
-  WINNER: { label: "Leader", pill: "status-completed" },
+  WINNER: { label: "Leader", pill: "status-review" },
   TIED_FIRST: { label: "Tied for 1st", pill: "status-review" },
   RANKED: { label: "Ranked", pill: "status-queued" },
   NOT_EVALUATED: { label: "Not Evaluated", pill: "status-queued" },
@@ -25,8 +25,8 @@ export function JudgeResultsView({ results, blockers, progress }: { results: Jud
   return (
     <div className="fade-in-up">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-ink">Official Results</h1>
-        <p className="mt-1 text-sm text-ink-2">
+        <h1 className="page-title">Official Results</h1>
+        <p className="page-sub">
           Official score = average of each team&apos;s <span className="text-ink">submitted</span> judge evaluations (2 dp). The highest score wins. Drafts and AI scores are not used.
         </p>
       </header>
@@ -40,27 +40,29 @@ export function JudgeResultsView({ results, blockers, progress }: { results: Jud
         disqualified={results.disqualified.map((t) => ({ teamId: t.teamId, teamCode: t.teamCode, name: t.name, reason: t.reason }))}
       />
 
-      <h2 className="mb-2 mt-6 text-sm font-semibold uppercase tracking-wider text-ink-3">Live standings (not final)</h2>
+      <h2 className="mb-3 mt-6 section-title">Live standings (not final)</h2>
 
       {/* ── Winner / tie ── */}
       {results.status === "WINNER" && winner && (
-        <section className="card mb-4 flex flex-wrap items-center gap-4 p-5" style={{ borderColor: "rgba(251, 191, 36, 0.35)" }}>
-          <span className="grid h-11 w-11 place-items-center rounded-full text-lg font-bold text-white" style={{ background: "var(--gold)" }}>1</span>
-          <div className="min-w-0 flex-1">
-            <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--gold)" }}>Current leader — not final until finalized</div>
-            <div className="text-lg font-bold text-ink">
-              <span className="mono">{winner.teamCode}</span> · {winner.name}
+        <section className="winner-card mb-4 flex flex-wrap items-center gap-4 p-5" aria-label="Current leader">
+          <span className="rank-badge" aria-hidden>1</span>
+          <div className="min-w-0 flex-1 basis-48">
+            <div className="winner-eyebrow">Current leader — not final until finalized</div>
+            <div className="mt-0.5 break-words text-xl font-semibold text-ink">{winner.name}</div>
+            <div className="mt-0.5 text-xs text-ink-3">
+              <span className="mono">{winner.teamCode}</span> · {winner.submittedJudges} judge{winner.submittedJudges === 1 ? "" : "s"} submitted
             </div>
-            <div className="text-xs text-ink-3">
-              Highest official judge score {fmt(winner.judgeScore)} from {winner.submittedJudges} judge{winner.submittedJudges === 1 ? "" : "s"}
-            </div>
+          </div>
+          <div className="text-right">
+            <div className="score-lg">{fmt(winner.judgeScore)}</div>
+            <div className="mt-1 text-xs text-ink-3">official judge score</div>
           </div>
         </section>
       )}
 
       {results.status === "TIE" && (
-        <section className="card mb-4 p-5" style={{ borderColor: "rgba(245, 158, 11, 0.45)" }}>
-          <div className="text-sm font-bold uppercase tracking-wider" style={{ color: "var(--warn)" }}>TIE — WINNER NOT DETERMINED</div>
+        <section className="card mb-4 p-5" style={{ borderColor: "rgb(var(--warn-rgb) / 0.45)", borderLeft: "3px solid var(--warn)" }}>
+          <div className="text-sm font-bold uppercase tracking-wider" style={{ color: "var(--warn-text)" }}>⚠ TIE — WINNER NOT DETERMINED</div>
           <p className="mt-1 text-sm text-ink-2">
             {top.length} teams share the highest official judge score. No winner is selected, and results cannot be finalized while first place is tied.
           </p>
@@ -85,37 +87,37 @@ export function JudgeResultsView({ results, blockers, progress }: { results: Jud
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--glass-border)] text-left text-xs font-medium uppercase tracking-wider text-ink-3">
-                  <th className="px-5 py-3 w-16">Rank</th>
-                  <th className="px-5 py-3">Team</th>
-                  <th className="px-5 py-3 text-right">Official Judge Score</th>
-                  <th className="px-5 py-3 text-right">Judges Submitted</th>
-                  <th className="px-5 py-3">Status</th>
+                  <th className="px-4 py-2.5 w-16">Rank</th>
+                  <th className="px-4 py-2.5">Team</th>
+                  <th className="px-4 py-2.5 text-right">Official Judge Score</th>
+                  <th className="px-4 py-2.5 text-right">Judges Submitted</th>
+                  <th className="px-4 py-2.5">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--glass-border)]">
                 {results.ranked.map((t) => (
-                  <tr key={t.teamId} className="transition-colors hover:bg-[var(--surface-2)]">
-                    <td className="px-5 py-3 nums font-semibold text-ink">
+                  <tr key={t.teamId} className={results.winnerTeamId === t.teamId ? "row-winner" : "transition-colors hover:bg-surface-2"}>
+                    <td className="px-4 py-2.5 nums font-semibold text-ink">
                       {t.rank}
                       {t.tiedWith.length > 0 && (
-                        <span className="ml-1.5 rounded border border-warn/40 px-1 py-0.5 text-[10px] font-bold" style={{ color: "var(--warn)" }}>TIE</span>
+                        <span className="ml-1.5 rounded border border-warn/40 px-1 py-0.5 text-[10px] font-bold" style={{ color: "var(--warn-text)" }}>TIE</span>
                       )}
                     </td>
-                    <td className="px-5 py-3">
+                    <td className="px-4 py-2.5">
                       <span className="mono text-xs text-ink-3">{t.teamCode}</span>
                       <span className="ml-2 font-medium text-ink">{t.name}</span>
                       {results.winnerTeamId === t.teamId && (
-                        <span className="ml-2 rounded px-1.5 py-0.5 text-[10px] font-bold text-white" style={{ background: "var(--gold)" }}>LEADER</span>
+                        <span className="tag-gold">LEADER</span>
                       )}
                       {t.projectTitle && <div className="text-xs text-ink-3">{t.projectTitle}</div>}
                     </td>
-                    <td className="px-5 py-3 text-right nums text-base font-semibold" style={{ color: totalBandVar(t.judgeScore!) }}>{fmt(t.judgeScore)}</td>
-                    <td className="px-5 py-3 text-right nums text-ink-2">
+                    <td className="px-4 py-2.5 text-right nums text-base font-semibold" style={{ color: totalBandVar(t.judgeScore!) }}>{fmt(t.judgeScore)}</td>
+                    <td className="px-4 py-2.5 text-right nums text-ink-2">
                       <span className="font-semibold text-ink">{t.submittedJudges}</span>
                       {t.assignedJudges > 0 && <span className="text-ink-3"> of {t.assignedJudges} assigned</span>}
                       {t.draftJudges > 0 && <div className="text-[11px] text-ink-3">{t.draftJudges} draft{t.draftJudges === 1 ? "" : "s"} pending</div>}
                     </td>
-                    <td className="px-5 py-3"><StatusPill status={officialStatus(results, t.teamId)} /></td>
+                    <td className="px-4 py-2.5"><StatusPill status={officialStatus(results, t.teamId)} /></td>
                   </tr>
                 ))}
               </tbody>

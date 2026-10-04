@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { CountUp } from "@/components/ui/CountUp";
 
 /**
- * Circular score indicator with glow effect. `value` out of `max`. Animates the arc on mount.
+ * Circular score indicator. `value` out of `max`. Animates the arc on mount.
  */
 export function ScoreRing({
   value,
@@ -44,15 +44,6 @@ export function ScoreRing({
   return (
     <div className="relative grid place-items-center" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
-        <defs>
-          <filter id="ring-glow">
-            <feGaussianBlur stdDeviation="3" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
         {/* Background track */}
         <circle
           cx={size / 2}
@@ -62,7 +53,7 @@ export function ScoreRing({
           stroke="var(--surface-2-solid)"
           strokeWidth={stroke}
         />
-        {/* Value arc with glow */}
+        {/* Value arc */}
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -73,15 +64,14 @@ export function ScoreRing({
           strokeLinecap="round"
           strokeDasharray={c}
           strokeDashoffset={c - dash}
-          filter="url(#ring-glow)"
           style={{ transition: "stroke-dashoffset 900ms cubic-bezier(0.22,1,0.36,1)" }}
         />
       </svg>
       <div className="absolute flex flex-col items-center">
         {value == null ? (
-          <span className="nums text-2xl font-extrabold text-ink-3">—</span>
+          <span className="nums text-2xl font-semibold text-ink-3">—</span>
         ) : (
-          <span className="nums text-[28px] font-extrabold leading-none tracking-tight text-ink">
+          <span className="nums text-[28px] font-semibold leading-none tracking-tight text-ink">
             <CountUp value={value} decimals={decimals} />
           </span>
         )}

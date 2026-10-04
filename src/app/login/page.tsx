@@ -4,6 +4,7 @@ import { Suspense, useState } from "react";
 import { getSession, signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ACCOUNT_DISABLED, homePathForRole } from "@/lib/roles";
+import { Logo } from "@/components/ui/Logo";
 
 function LoginInner() {
   const router = useRouter();
@@ -42,22 +43,14 @@ function LoginInner() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-bg px-6 ambient-glow">
-      <div className="relative z-10 w-full max-w-sm fade-in-up">
-        <div className="mb-8 flex items-center gap-2.5">
-          <span
-            className="grid h-9 w-9 place-items-center rounded-lg text-sm font-extrabold"
-            style={{ background: "var(--gradient-brand)", color: "var(--brand-fg)", boxShadow: "var(--glow-brand-sm)" }}
-          >
-            S
-          </span>
-          <span className="text-lg font-bold tracking-tight text-ink">
-            Score<span style={{ color: "var(--brand)" }}>Lab</span>
-          </span>
+    <main className="flex min-h-screen items-center justify-center bg-bg px-4 py-10">
+      <div className="w-full max-w-sm fade-in-up">
+        <div className="mb-6 flex justify-center">
+          <Logo size="lg" />
         </div>
 
         <div className="card-raised p-6">
-          <h1 className="text-xl font-bold text-ink">Sign in</h1>
+          <h1 className="text-lg font-semibold text-ink">Sign in</h1>
           <p className="mt-1 text-sm text-ink-3">Organizer and judge access to the evaluation platform.</p>
           <form onSubmit={onSubmit} className="mt-6 flex flex-col gap-4">
             <label>
@@ -68,7 +61,7 @@ function LoginInner() {
               <span className="label">Password</span>
               <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="field" autoComplete="current-password" />
             </label>
-            {error && <p className="text-sm text-bad">{error}</p>}
+            {error && <p role="alert" className="notice notice-bad">{error}</p>}
             <button type="submit" disabled={loading} className="btn-primary mt-1 w-full">
               {loading ? "Signing in…" : "Sign in"}
             </button>

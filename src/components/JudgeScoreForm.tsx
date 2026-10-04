@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/Toast";
 import { ScoreRing } from "@/components/ui/ScoreRing";
-import { totalBandVar } from "@/components/ui/ProgressBar";
+import { ProgressBar, totalBandVar } from "@/components/ui/ProgressBar";
 import { readApiError } from "@/lib/uiErrors";
 
 export interface ScoreFormEvaluation {
@@ -92,16 +92,21 @@ export function JudgeScoreForm({ evaluation, locked = false }: { evaluation: Sco
     router.refresh();
   }
 
+  const readOnly = submitted || locked;
+
   return (
-    <div className="mt-6">
+    <div className="mt-5">
       {submitted ? (
-        <div className="card mb-5 flex flex-wrap items-center gap-5 p-5">
-          <ScoreRing value={evaluation.finalScore} label="/ 100" color={evaluation.finalScore != null ? totalBandVar(evaluation.finalScore) : "var(--brand)"} />
-          <div>
-            <span className="status-pill status-completed">
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: "currentColor" }} />
-              Submitted
-            </span>
+        <div className="card mb-4 flex flex-wrap items-center gap-5 p-5" role="status">
+          <ScoreRing value={evaluation.finalScore} size={112} stroke={8} label="/ 100" color={evaluation.finalScore != null ? totalBandVar(evaluation.finalScore) : "var(--brand)"} />
+          <div className="min-w-0 flex-1 basis-56">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="status-pill status-completed">
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: "currentColor" }} />
+                Submitted
+              </span>
+              <span className="status-pill status-queued">Read-only</span>
+            </div>
             <p className="mt-2 text-sm text-ink-2">
               Final score <span className="nums font-semibold text-ink">{evaluation.finalScore?.toFixed(2)}</span> / 100
             </p>
@@ -110,41 +115,56 @@ export function JudgeScoreForm({ evaluation, locked = false }: { evaluation: Sco
                 Submitted {new Date(evaluation.submittedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}.
               </p>
             )}
-            <p className="mt-1 text-sm font-medium text-ink">This evaluation has been submitted and cannot be changed.</p>
+            <p className="mt-2 text-sm font-medium text-ink">This evaluation has been submitted and cannot be changed.</p>
             {locked && <p className="mt-0.5 text-xs text-ink-3">Judging has been finalized.</p>}
           </div>
         </div>
       ) : locked ? (
-        <p className="mb-4 rounded-lg border border-warn/40 px-4 py-3 text-sm" style={{ color: "var(--warn)" }}>
-          Judging has been finalized. This draft was not submitted and can no longer be changed.
-        </p>
+        <div className="notice notice-warn mb-4" role="status">
+          <span className="font-semibold">Read-only.</span> Judging has been finalized. This draft was not submitted and can no longer be changed.
+        </div>
       ) : (
-        <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
           <span className="status-pill status-review">
             <span className="h-1.5 w-1.5 rounded-full" style={{ background: "currentColor" }} />
             DRAFT
           </span>
-          <p className="text-sm text-ink-2">
+          <p className="min-w-0 flex-1 basis-64 text-sm text-ink-2">
             Score each criterion on its own scale. Save a draft any time; submit once every criterion is scored.
           </p>
         </div>
       )}
 
-      <div className="flex flex-col gap-3">
-        {evaluation.criteria.map((c) => {
+      <ol className="flex flex-col gap-2.5">
+        {evaluation.criteria.map((c, i) => {
           const err = errors[c.criterionId];
           const inputId = `score-${c.criterionId}`;
+          const raw = (values[c.criterionId] ?? "").trim();
+          const scored = raw !== "" && !err;
           return (
-            <section key={c.criterionId} className="card p-4 sm:p-5">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                  <label htmlFor={inputId} className="text-base font-semibold text-ink">
-                    {c.criterionName} <span className="font-normal text-ink-3">— {c.scaleMax} points</span>
-                  </label>
-                  <div className="mt-0.5 text-xs text-ink-3">Weight {c.weight}%</div>
-                  {c.description && <p className="mt-2 text-sm leading-relaxed text-ink-2">{c.description}</p>}
+            <li key={c.criterionId} className="card p-4 sm:p-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex min-w-0 flex-1 gap-3">
+                  <span
+                    aria-hidden
+                    className="nums mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-semibold"
+                    style={scored
+                      ? { background: "var(--brand-tint)", color: "var(--brand-text)", border: "1px solid rgb(var(--brand-rgb) / 0.4)" }
+                      : { color: "var(--ink-3)", border: "1px solid var(--hair-strong)" }}
+                  >
+                    {scored ? "✓" : i + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <label htmlFor={inputId} className="card-title block">{c.criterionName}</label>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <span className="chip nums">Scale 0–{c.scaleMax}</span>
+                      <span className="chip nums">Weight {c.weight}%</span>
+                      {!scored && !readOnly && <span className="text-xs text-ink-3">Not scored</span>}
+                    </div>
+                    {c.description && <p className="mt-2.5 max-w-prose text-sm leading-relaxed text-ink-2">{c.description}</p>}
+                  </div>
                 </div>
-                <div className="flex flex-col items-end">
+                <div className="flex shrink-0 flex-col pl-9 sm:items-end sm:pl-0">
                   <div className="flex items-baseline gap-2">
                     <input
                       id={inputId}
@@ -158,37 +178,48 @@ export function JudgeScoreForm({ evaluation, locked = false }: { evaluation: Sco
                       disabled={submitted || locked || busy}
                       placeholder="—"
                       aria-invalid={!!err}
-                      aria-describedby={`${inputId}-max`}
-                      className="field nums w-24 text-right text-lg font-semibold"
-                      style={err ? { borderColor: "var(--bad)" } : undefined}
+                      aria-describedby={err ? `${inputId}-max ${inputId}-err` : `${inputId}-max`}
+                      className="field nums h-11 w-24 text-right text-lg font-semibold"
                     />
                     <span id={`${inputId}-max`} className="nums text-sm font-medium text-ink-2">/ {c.scaleMax}</span>
                   </div>
-                  {err && <span className="mt-1 text-xs text-bad">{err}</span>}
+                  {err && <span id={`${inputId}-err`} role="alert" className="mt-1.5 text-xs font-medium" style={{ color: "var(--bad-text)" }}>⚠ {err}</span>}
                 </div>
               </div>
-            </section>
+            </li>
           );
         })}
-      </div>
+      </ol>
 
       {!submitted && !locked && (
-        <div className="card sticky bottom-3 z-10 mt-4 p-4 shadow-lg" role="region" aria-label="Save or submit this evaluation">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="text-sm text-ink-2">
-              <span className="nums font-semibold text-ink">{filled}</span> of {evaluation.criteria.length} scored
-              <span className="mx-2 text-ink-3">·</span>
-              Running total <span className="nums font-semibold text-ink">{runningTotal.toFixed(2)}</span> / 100
+        <div
+          className="sticky bottom-3 z-10 mt-4 rounded-[10px] border border-hair-strong bg-surface-2 p-3 sm:p-4"
+          style={{ boxShadow: "var(--shadow-lg)" }}
+          role="region"
+          aria-label="Save or submit this evaluation"
+        >
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+            <div className="min-w-[9rem] flex-1">
+              <div className="mb-1.5 text-xs text-ink-2">
+                <span className="nums font-semibold text-ink">{filled}</span> of {evaluation.criteria.length} scored
+              </div>
+              <ProgressBar value={filled} max={evaluation.criteria.length || 1} height={4} label="Criteria scored" className="max-w-[14rem]" />
             </div>
-            <div className="ml-auto flex gap-2">
-              <button onClick={saveDraft} disabled={busy || hasErrors} className="btn-ghost" title={hasErrors ? "Fix the highlighted scores first" : undefined}>
+            <div className="text-right">
+              <div className="text-[11px] font-medium uppercase tracking-wider text-ink-3">Running total</div>
+              <div className="nums text-xl font-semibold leading-tight text-ink">
+                {runningTotal.toFixed(2)} <span className="text-sm font-normal text-ink-3">/ 100</span>
+              </div>
+            </div>
+            <div className="flex w-full gap-2 sm:w-auto">
+              <button onClick={saveDraft} disabled={busy || hasErrors} className="btn-ghost flex-1 sm:flex-none" title={hasErrors ? "Fix the highlighted scores first" : undefined}>
                 {busy && !confirming ? "Saving…" : "Save Draft"}
               </button>
               <button
                 onClick={() => setConfirming(true)}
                 disabled={busy || hasErrors || !complete}
                 title={hasErrors ? "Fix the highlighted scores first" : !complete ? "Score every criterion to submit" : undefined}
-                className="btn-primary"
+                className="btn-primary flex-1 sm:flex-none"
               >
                 Submit Evaluation
               </button>
@@ -196,14 +227,14 @@ export function JudgeScoreForm({ evaluation, locked = false }: { evaluation: Sco
           </div>
 
           {confirming && (
-            <div className="mt-4 rounded-lg border border-warn/40 px-4 py-3" style={{ background: "var(--surface-2)" }}>
-              <p className="text-sm font-medium" style={{ color: "var(--warn)" }}>
+            <div className="notice notice-warn mt-3" role="alertdialog" aria-label="Confirm submission">
+              <p className="text-sm font-semibold">
                 Once submitted, this evaluation cannot be edited.
               </p>
               <p className="mt-1 text-xs text-ink-2">
                 You are submitting a score of <span className="nums font-semibold text-ink">{runningTotal.toFixed(2)}</span> / 100.
               </p>
-              <div className="mt-3 flex gap-2">
+              <div className="mt-3 flex flex-wrap gap-2">
                 <button onClick={submit} disabled={busy} className="btn-primary">{busy ? "Submitting…" : "Confirm submit"}</button>
                 <button onClick={() => setConfirming(false)} disabled={busy} className="btn-ghost">Cancel</button>
               </div>

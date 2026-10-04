@@ -36,19 +36,19 @@ export default async function JudgeTeamPage({ params }: { params: Promise<{ team
     <div className="fade-in-up">
       <Link href="/judge" className="link text-sm">← My Assigned Teams</Link>
 
-      <header className="mt-3 border-b border-[var(--glass-border)] pb-5">
-        <div className="mono text-sm font-semibold text-ink-3">{team.teamCode}</div>
-        <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-ink">{team.projectTitle ?? "Untitled project"}</h1>
+      <header className="mt-3 border-b border-hair pb-4">
+        <div className="mono text-xs font-semibold text-ink-3">{team.teamCode}</div>
+        <h1 className="mt-0.5 page-title">{team.projectTitle ?? "Untitled project"}</h1>
         {team.projectDescription && <p className="mt-2 max-w-3xl text-sm leading-relaxed text-ink-2">{team.projectDescription}</p>}
         {team.repoUrl && (
-          <a href={team.repoUrl} target="_blank" rel="noreferrer" className="mono mt-2 inline-flex items-center gap-1 text-xs text-ink-2 hover:text-ink">
+          <a href={team.repoUrl} target="_blank" rel="noreferrer" className="link-brand mono mt-2 inline-flex max-w-full items-center gap-1 break-all text-xs">
             {team.repoUrl.replace(/^https?:\/\/(www\.)?/, "")}<Icon.external size={11} />
           </a>
         )}
       </header>
 
       {setupError || !evaluation ? (
-        <p className="mt-6 rounded-lg border border-warn/40 bg-surface px-4 py-3 text-sm" style={{ color: "var(--warn)" }}>
+        <p className="mt-6 notice notice-warn">
           {setupError ?? "This evaluation could not be loaded."}
         </p>
       ) : (

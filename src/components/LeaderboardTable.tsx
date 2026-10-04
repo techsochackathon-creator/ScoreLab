@@ -53,11 +53,7 @@ export function LeaderboardTable({ rows, tracks }: { rows: LeaderRow[]; tracks: 
           const active = t === track;
           return (
             <button key={t} onClick={() => setTrack(t)} aria-pressed={active}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${active ? "text-[var(--brand-fg)]" : "text-ink-2 hover:text-ink"}`}
-              style={active
-                ? { background: "var(--gradient-brand)", boxShadow: "var(--glow-brand-sm)" }
-                : { background: "var(--surface-2)", border: "1px solid var(--glass-border)" }
-              }>
+              className={`rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${active ? "border-transparent bg-brand text-[var(--brand-fg)]" : "border-hair-strong text-ink-2 hover:bg-surface-2 hover:text-ink"}`}>
               {t === "all" ? "All tracks" : t}
             </button>
           );
@@ -70,15 +66,12 @@ export function LeaderboardTable({ rows, tracks }: { rows: LeaderRow[]; tracks: 
             <div
               key={r.teamId}
               className={`card p-5 transition-all ${r.rank === 1 ? "sm:-mt-2 sm:pb-7" : ""}`}
-              style={{
-                borderTop: `2px solid ${MEDAL[i]}`,
-                boxShadow: r.rank === 1 ? `0 0 20px ${MEDAL[0]}20` : undefined,
-              }}
+              style={{ borderTop: `2px solid ${MEDAL[i]}` }}
             >
               <div className="flex items-center justify-between">
                 <span
-                  className="mono grid h-9 w-9 place-items-center rounded-full text-sm font-bold text-white"
-                  style={{ background: MEDAL[i], boxShadow: r.rank === 1 ? `0 0 12px ${MEDAL[0]}40` : undefined }}
+                  className="mono grid h-9 w-9 place-items-center rounded-full text-sm font-bold text-[#0b1120]"
+                  style={{ background: MEDAL[i] }}
                 >
                   {r.rank}
                 </span>
@@ -90,7 +83,7 @@ export function LeaderboardTable({ rows, tracks }: { rows: LeaderRow[]; tracks: 
                 <div className="mt-1 text-[10px] text-ink-3" title="Rank determined by tie-break resolution">⚡ Tie resolved</div>
               )}
               <div className="mt-3 flex items-baseline gap-1">
-                <span className="nums text-3xl font-extrabold tracking-tight text-ink"><CountUp value={r.totalScore} /></span>
+                <span className="score-lg"><CountUp value={r.totalScore} /></span>
                 <span className="text-sm font-medium text-ink-3">/100</span>
               </div>
               <ProgressBar value={r.totalScore} color={totalBandVar(r.totalScore)} className="mt-2" />

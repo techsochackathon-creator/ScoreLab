@@ -88,8 +88,8 @@ export function AnalyticsView({ data }: { data: AnalyticsData }) {
 function Header() {
   return (
     <header className="mb-6">
-      <h1 className="text-2xl font-bold tracking-tight text-ink">Analytics</h1>
-      <p className="mt-1 text-sm text-ink-2">Score distribution, criterion performance, and team profiles.</p>
+      <h1 className="page-title">Analytics</h1>
+      <p className="page-sub">Score distribution, criterion performance, and team profiles.</p>
     </header>
   );
 }

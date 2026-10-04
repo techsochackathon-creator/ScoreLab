@@ -85,13 +85,13 @@ This permanently deletes the team together with its AI submissions, judge assign
 
   return (
     <div className="fade-in-up">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
+      <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink">Teams</h1>
-          <p className="mt-1 text-sm text-ink-2">
+          <h1 className="page-title">Teams</h1>
+          <p className="page-sub">
             Manage participating teams, or bulk-import from CSV.
             {initialTeams.length > 0 && (
-              <span className="ml-2 text-ink-3">
+              <span className="ml-1 text-ink-3">
                 {teamsWithRepo.length}/{initialTeams.length} have repo URLs — ready for batch evaluation.
               </span>
             )}
@@ -106,7 +106,7 @@ This permanently deletes the team together with its AI submissions, judge assign
       </header>
 
       {locked && (
-        <p className="mb-4 rounded-lg border border-warn/40 px-4 py-3 text-sm" style={{ color: "var(--warn)" }}>
+        <p className="mb-4 notice notice-warn">
           Results have been finalized. Teams can no longer be added, edited or deleted.
         </p>
       )}
@@ -126,7 +126,7 @@ This permanently deletes the team together with its AI submissions, judge assign
 
       {editingId && (
         <div className="card mb-4 p-4">
-          <h2 className="mb-3 text-sm font-semibold text-ink">{editingId === "new" ? "New team" : "Edit team"}</h2>
+          <h2 className="mb-3 card-title">{editingId === "new" ? "New team" : "Edit team"}</h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label><span className="label">Team ID</span><input className="field" value={draft.teamCode} onChange={(e) => setDraft({ ...draft, teamCode: e.target.value })} placeholder="e.g. TH-2026-001" /></label>
             <label><span className="label">Team name</span><input className="field" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="e.g. Code Wizards" /></label>
@@ -150,29 +150,30 @@ This permanently deletes the team together with its AI submissions, judge assign
           </div>
           <div className="divide-y divide-[var(--glass-border)]">
             {initialTeams.map((t) => (
-              <div key={t.id} className="grid grid-cols-1 gap-1 px-4 py-3 transition-colors hover:bg-surface-2 sm:grid-cols-[0.7fr_1.2fr_1.8fr_0.5fr_auto] sm:items-center sm:gap-4">
-                <div className="mono text-xs text-ink-3">{t.teamCode}</div>
+              <div key={t.id} className="grid grid-cols-1 gap-1 px-4 py-3 transition-colors hover:bg-surface-2 sm:grid-cols-[0.7fr_1.2fr_1.8fr_0.5fr_auto] sm:items-center sm:gap-4 sm:py-2.5">
+                <div className="mono text-xs font-medium text-ink-2">{t.teamCode}</div>
                 <div className="min-w-0">
-                  <Link href={`/organizer/teams/${t.id}`} className="font-semibold text-ink hover:text-brand">{t.name}</Link>
+                  <Link href={`/organizer/teams/${t.id}`} className="font-semibold text-ink hover:text-brand-text">{t.name}</Link>
                   {t.projectTitle && <div className="truncate text-xs text-ink-3">{t.projectTitle}</div>}
                 </div>
                 <div className="min-w-0">
                   {t.repoUrl ? (
-                    <a href={t.repoUrl} target="_blank" className="mono flex items-center gap-1 truncate text-xs text-ink-2 hover:text-ink">
+                    <a href={t.repoUrl} target="_blank" className="mono flex items-center gap-1 truncate text-xs text-ink-2 hover:text-brand-text">
                       {repoShort(t.repoUrl)}<Icon.external size={11} />
                     </a>
                   ) : (
-                    <span className="text-xs text-ink-3">No repo{!locked && <> — <button onClick={() => startEdit(t)} className="text-brand hover:underline">add URL</button></>}</span>
+                    <span className="text-xs text-ink-3">No repo{!locked && <> — <button onClick={() => startEdit(t)} className="text-brand-text hover:underline">add URL</button></>}</span>
                   )}
                 </div>
                 <div className="text-sm text-ink-2">
                   <span className="nums font-medium text-ink">{t.memberNames.length}</span>
+                  <span className="ml-1 text-xs text-ink-3 sm:hidden">member{t.memberNames.length === 1 ? "" : "s"}</span>
                 </div>
-                <div className="flex items-center gap-3 sm:justify-end">
+                <div className="flex items-center gap-1 sm:justify-end">
                   {!locked && (
                     <>
-                      <button onClick={() => startEdit(t)} className="text-xs font-medium text-ink-2 hover:text-ink" aria-label={`Edit ${t.teamCode}`}>Edit</button>
-                      <button onClick={() => remove(t)} className="text-xs font-medium text-ink-2 hover:text-bad" aria-label={`Delete ${t.teamCode}`}>Delete</button>
+                      <button onClick={() => startEdit(t)} className="rounded px-2 py-1 text-xs font-medium text-ink-2 transition-colors hover:bg-surface hover:text-ink" aria-label={`Edit ${t.teamCode}`}>Edit</button>
+                      <button onClick={() => remove(t)} className="rounded px-2 py-1 text-xs font-medium text-ink-2 transition-colors hover:bg-bad/10 hover:text-[var(--bad-text)]" aria-label={`Delete ${t.teamCode}`}>Delete</button>
                     </>
                   )}
                 </div>

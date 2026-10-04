@@ -18,13 +18,6 @@ function timeAgo(d: Date) {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
-function getGreeting() {
-  const h = new Date().getHours();
-  if (h < 12) return "Good morning";
-  if (h < 17) return "Good afternoon";
-  return "Good evening";
-}
-
 export default async function OverviewPage() {
   const ds = await getDataset();
   // Official (judge-score) workflow status — shown first.
@@ -41,85 +34,69 @@ export default async function OverviewPage() {
   });
 
   return (
-    <div className="ambient-glow">
-      {/* ── Hero Section ── */}
-      <div className="relative z-10 mb-8 fade-in-up">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 text-sm text-ink-3">
-              <span style={{ color: "var(--brand)" }}>✦</span>
-              Hackathon Evaluation Platform
-            </div>
-            <h1 className="mt-1 text-3xl font-extrabold tracking-tight text-ink">
-              {getGreeting()}, Organizer <span className="inline-block origin-[70%_70%] animate-[wave_2s_ease-in-out_infinite]">✨</span>
-            </h1>
-            <p className="mt-1.5 text-sm text-ink-3">
-              Here&apos;s what&apos;s happening with your hackathon today.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link href="/organizer/results" className="btn-primary">Official results</Link>
-            <Link href="/organizer/evaluations" className="btn-ghost">
-              <Icon.spark size={16} /> AI evaluation
-            </Link>
-          </div>
+    <div className="fade-in-up">
+      {/* ── Header ── */}
+      <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="page-title">Overview</h1>
+          <p className="page-sub">Judging status first, then the AI reference evaluation.</p>
         </div>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/organizer/results" className="btn-ghost">Official results</Link>
+          <Link href="/organizer/evaluations" className="btn-ghost">
+            <Icon.spark size={16} /> AI evaluation
+          </Link>
+        </div>
+      </header>
+
+      {/* ── Official judging status ── */}
+      {official ? (
+        <JudgingStatusCard phase="FINALIZED" state={official} />
+      ) : (
+        <JudgingStatusCard phase="JUDGING_OPEN" progress={judgingProgress(live!)} blockers={finalizationBlockers(live!).length} />
+      )}
+
+      {/* ── AI evaluation (reference) ── */}
+      <div className="mb-3 mt-6 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <h2 className="section-title">AI evaluation</h2>
+        <span className="text-xs text-ink-3">Reference only — not used for official results</span>
       </div>
 
-      <div className="relative z-10 fade-in-up">
-        {official ? (
-          <JudgingStatusCard phase="FINALIZED" state={official} />
-        ) : (
-          <JudgingStatusCard phase="JUDGING_OPEN" progress={judgingProgress(live!)} blockers={finalizationBlockers(live!).length} />
-        )}
-      </div>
-
-      <h2 className="mb-3 mt-6 text-sm font-semibold uppercase tracking-wider text-ink-3">AI evaluation (reference only — not used for official results)</h2>
-
-      {/* ── Stat Cards ── */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <div className="fade-in-up delay-1">
-          <StatCard label="Total Teams" value={ds.teamsTotal} icon="teams" />
-        </div>
-        <div className="fade-in-up delay-2">
-          <StatCard label="Evaluated" value={ds.teams.length} icon="check" accent />
-        </div>
-        <div className="fade-in-up delay-3">
-          <StatCard label="Avg Score" value={s.count ? s.avg.toFixed(1) : "—"} icon="analytics" foot={s.count ? `across ${s.count} teams` : "no data yet"} />
-        </div>
-        <div className="fade-in-up delay-4">
-          <StatCard label="Top Score" value={s.count ? s.max.toFixed(1) : "—"} icon="leaderboard" />
-        </div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatCard label="Total Teams" value={ds.teamsTotal} icon="teams" />
+        <StatCard label="Evaluated" value={ds.teams.length} icon="check" accent foot={ds.teamsTotal ? `of ${ds.teamsTotal} teams` : undefined} />
+        <StatCard label="Avg Score" value={s.count ? s.avg.toFixed(1) : "—"} icon="analytics" foot={s.count ? `across ${s.count} teams` : "no data yet"} />
+        <StatCard label="Top Score" value={s.count ? s.max.toFixed(1) : "—"} icon="leaderboard" />
       </div>
 
       {/* ── Recent Evaluations Table ── */}
       {recentSubs.length > 0 && (
-        <div className="mt-4 card overflow-hidden fade-in-up delay-8">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--glass-border)]">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-3">Recent Evaluations</h2>
+        <div className="card mt-3 overflow-hidden">
+          <div className="flex items-center justify-between border-b border-hair px-4 py-3">
+            <h2 className="section-title">Recent Evaluations</h2>
             <Link href="/organizer/evaluations" className="link-brand text-xs">View all →</Link>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[var(--glass-border)] text-left text-xs font-medium text-ink-3 uppercase tracking-wider">
-                  <th className="px-5 py-3">Team</th>
-                  <th className="px-5 py-3">Status</th>
-                  <th className="px-5 py-3 text-right">Score</th>
-                  <th className="px-5 py-3 text-right hidden sm:table-cell">Completed</th>
-                  <th className="px-5 py-3 text-right">Actions</th>
+                <tr className="border-b border-hair text-left text-xs font-medium uppercase tracking-wider text-ink-3">
+                  <th scope="col" className="px-4 py-2.5">Team</th>
+                  <th scope="col" className="px-4 py-2.5">Status</th>
+                  <th scope="col" className="px-4 py-2.5 text-right">Score</th>
+                  <th scope="col" className="hidden px-4 py-2.5 text-right sm:table-cell">Completed</th>
+                  <th scope="col" className="px-4 py-2.5 text-right"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[var(--glass-border)]">
+              <tbody className="divide-y divide-hair">
                 {recentSubs.map((sub) => (
-                  <tr key={sub.id} className="transition-colors hover:bg-[var(--surface-2)]">
-                    <td className="px-5 py-3">
+                  <tr key={sub.id} className="transition-colors hover:bg-surface-2">
+                    <td className="px-4 py-2.5">
                       <span className="font-medium text-ink">{sub.team.name}</span>
                     </td>
-                    <td className="px-5 py-3">
+                    <td className="px-4 py-2.5">
                       <StatusBadge status={sub.status} />
                     </td>
-                    <td className="px-5 py-3 text-right">
+                    <td className="px-4 py-2.5 text-right">
                       {sub.finalScore != null ? (
                         <span className="nums font-semibold" style={{ color: totalBandVar(sub.finalScore) }}>
                           {sub.finalScore.toFixed(1)}
@@ -128,11 +105,11 @@ export default async function OverviewPage() {
                         <span className="text-ink-3">—</span>
                       )}
                     </td>
-                    <td className="px-5 py-3 text-right text-xs text-ink-3 hidden sm:table-cell">
+                    <td className="hidden px-4 py-2.5 text-right text-xs text-ink-3 sm:table-cell">
                       {sub.evaluatedAt ? timeAgo(sub.evaluatedAt) : "—"}
                     </td>
-                    <td className="px-5 py-3 text-right">
-                      <Link href={`/organizer/submissions/${sub.id}`} className="link-brand text-xs">View →</Link>
+                    <td className="px-4 py-2.5 text-right">
+                      <Link href={`/organizer/submissions/${sub.id}`} className="link-brand text-xs" aria-label={`View evaluation for ${sub.team.name}`}>View →</Link>
                     </td>
                   </tr>
                 ))}
@@ -143,9 +120,9 @@ export default async function OverviewPage() {
       )}
 
       {/* ── Quick Actions ── */}
-      <div className="mt-4 fade-in-up delay-8">
+      <div className="mt-6">
         <SectionTitle>Quick Actions</SectionTitle>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <QuickAction href="/organizer/evaluations" icon="spark" label="Start Evaluation" primary />
           <QuickAction href="/organizer/teams" icon="teams" label="Manage Teams" />
           <QuickAction href="/organizer/rubric" icon="rubric" label="Edit Rubric" />
@@ -164,9 +141,6 @@ export default async function OverviewPage() {
           />
         </div>
       )}
-
-      {/* Wave animation keyframe */}
-      <style>{`@keyframes wave{0%,100%{transform:rotate(0deg)}25%{transform:rotate(20deg)}75%{transform:rotate(-10deg)}}`}</style>
     </div>
   );
 }
@@ -176,21 +150,18 @@ export default async function OverviewPage() {
 function QuickAction({ href, icon, label, primary }: { href: string; icon: IconName; label: string; primary?: boolean }) {
   const I = Icon[icon];
   return (
-    <Link
-      href={href}
-      className="card-interactive flex flex-col items-center gap-2.5 px-4 py-5 text-center"
-      style={primary ? { borderColor: "rgba(147, 133, 255, 0.22)", boxShadow: "var(--glow-brand-sm)" } : undefined}
-    >
+    <Link href={href} className="card-interactive flex items-center gap-3 px-3 py-2.5">
       <span
-        className="grid h-10 w-10 place-items-center rounded-xl"
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-md"
         style={{
           background: primary ? "var(--brand-tint)" : "var(--surface-2)",
-          color: primary ? "var(--brand)" : "var(--ink-3)",
+          color: primary ? "var(--brand-text)" : "var(--ink-3)",
         }}
       >
-        <I size={20} />
+        <I size={16} />
       </span>
-      <span className={`text-sm font-medium ${primary ? "text-ink" : "text-ink-2"}`}>{label}</span>
+      <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{label}</span>
+      <Icon.chevronRight size={14} className="shrink-0 text-ink-3" />
     </Link>
   );
 }

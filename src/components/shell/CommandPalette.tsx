@@ -90,14 +90,12 @@ export function CommandPalette() {
 
   return (
     <div className="fixed inset-0 z-[120] flex items-start justify-center px-4 pt-[12vh]" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setOpen(false)} />
+      <div className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} />
       <div
-        className="relative w-full max-w-xl overflow-hidden rounded-xl fade-in-up"
+        className="relative w-full max-w-xl overflow-hidden rounded-lg fade-in-up"
         style={{
-          background: "var(--glass-bg)",
-          border: "1px solid var(--glass-border)",
-          backdropFilter: "blur(24px)",
-          WebkitBackdropFilter: "blur(24px)",
+          background: "var(--surface)",
+          border: "1px solid var(--hair-strong)",
           boxShadow: "var(--shadow-lg)",
         }}
       >
@@ -127,7 +125,7 @@ export function CommandPalette() {
                   data-active={i === active}
                   className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors data-[active=true]:bg-[var(--surface-2)]"
                 >
-                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-ink-3" style={i === active ? { background: "var(--brand-tint)", color: "var(--brand)" } : {}}>
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-ink-3" style={i === active ? { background: "var(--brand-tint)", color: "var(--brand-text)" } : {}}>
                     <I size={15} />
                   </span>
                   <span className="text-ink">{c.label}</span>

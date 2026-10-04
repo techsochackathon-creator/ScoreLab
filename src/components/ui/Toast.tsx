@@ -34,19 +34,15 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           <div
             key={t.id}
             role="status"
-            className="pointer-events-auto flex items-center gap-3 rounded-xl px-4 py-3 text-sm fade-in-up"
+            className="pointer-events-auto flex items-start gap-3 rounded-lg px-4 py-3 text-sm fade-in-up"
             style={{
-              background: "var(--glass-bg)",
-              border: "1px solid var(--glass-border)",
-              backdropFilter: "blur(20px)",
-              WebkitBackdropFilter: "blur(20px)",
+              background: "var(--surface-2)",
+              border: "1px solid var(--hair-strong)",
+              borderLeft: `3px solid ${t.kind === "error" ? "var(--bad)" : t.kind === "info" ? "var(--info)" : "var(--good)"}`,
               boxShadow: "var(--shadow-lg)",
             }}
           >
-            <span
-              className="h-2 w-2 shrink-0 rounded-full"
-              style={{ background: t.kind === "error" ? "var(--bad)" : t.kind === "info" ? "var(--info)" : "var(--good)" }}
-            />
+            <span className="sr-only">{t.kind === "error" ? "Error: " : t.kind === "info" ? "Info: " : "Success: "}</span>
             <span className="text-ink">{t.message}</span>
           </div>
         ))}
