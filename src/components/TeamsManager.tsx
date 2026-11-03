@@ -7,6 +7,7 @@ import { useToast } from "@/components/ui/Toast";
 import { EmptyState } from "@/components/ui/misc";
 import { Icon } from "@/components/ui/icons";
 import { friendlyApiError } from "@/lib/uiErrors";
+import { ExportMenu } from "@/components/ExportMenu";
 
 export interface TeamRow {
   id: string;
@@ -97,12 +98,15 @@ This permanently deletes the team together with its AI submissions, judge assign
             )}
           </p>
         </div>
-        {!locked && (
-          <div className="flex gap-2">
-            <button onClick={() => setShowCsv((v) => !v)} className="btn-ghost">Import CSV</button>
-            <button onClick={startAdd} className="btn-primary"><Icon.plus size={16} /> Add team</button>
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <ExportMenu kind="teams" />
+          {!locked && (
+            <>
+              <button onClick={() => setShowCsv((v) => !v)} className="btn-ghost">Import CSV</button>
+              <button onClick={startAdd} className="btn-primary"><Icon.plus size={16} /> Add team</button>
+            </>
+          )}
+        </div>
       </header>
 
       {locked && (

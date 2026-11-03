@@ -5,6 +5,7 @@ import { officialStatus, type OfficialStatus } from "@/lib/officialResults";
 import { ResultsLifecycleControl } from "@/components/ResultsLifecycleControl";
 import { JudgingProgressPanel } from "@/components/JudgingProgressPanel";
 import { DisqualifyPanel } from "@/components/DisqualifyPanel";
+import { ExportMenu } from "@/components/ExportMenu";
 import type { JudgingProgress } from "@/lib/officialResults";
 
 const fmt = (n: number | null) => (n === null ? "—" : n.toFixed(2));
@@ -24,11 +25,14 @@ export function JudgeResultsView({ results, blockers, progress }: { results: Jud
 
   return (
     <div className="fade-in-up">
-      <header className="mb-6">
-        <h1 className="page-title">Official Results</h1>
-        <p className="page-sub">
-          Official score = average of each team&apos;s <span className="text-ink">submitted</span> judge evaluations (2 dp). The highest score wins. Drafts and AI scores are not used.
-        </p>
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0 flex-1 basis-80">
+          <h1 className="page-title">Official Results</h1>
+          <p className="page-sub">
+            Official score = average of each team&apos;s <span className="text-ink">submitted</span> judge evaluations (2 dp). The highest score wins. Drafts and AI scores are not used.
+          </p>
+        </div>
+        <ExportMenu kind="results" />
       </header>
 
       <ResultsLifecycleControl phase="JUDGING_OPEN" blockers={blockers} />

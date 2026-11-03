@@ -1,5 +1,6 @@
 import type { OfficialState } from "@/lib/officialResults";
 import { ResultsLifecycleControl } from "@/components/ResultsLifecycleControl";
+import { ExportMenu } from "@/components/ExportMenu";
 
 const fmt = (n: number) => n.toFixed(2);
 
@@ -10,9 +11,12 @@ export function FinalResultsView({ state }: { state: OfficialState }) {
 
   return (
     <div className="fade-in-up">
-      <header className="mb-6">
-        <h1 className="page-title">Official Results</h1>
-        <p className="page-sub">Final ranking by average submitted judge score. This result is frozen and no longer depends on live judge data.</p>
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0 flex-1 basis-80">
+          <h1 className="page-title">Official Results</h1>
+          <p className="page-sub">Final ranking by average submitted judge score. This result is frozen and no longer depends on live judge data.</p>
+        </div>
+        <ExportMenu kind="results" />
       </header>
 
       <ResultsLifecycleControl
