@@ -12,6 +12,7 @@ export interface ScoreFormEvaluation {
   status: "DRAFT" | "SUBMITTED";
   finalScore: number | null;
   submittedAt: string | null;
+  overallComment: string | null;
   criteria: {
     criterionId: string;
     criterionName: string;
@@ -19,8 +20,12 @@ export interface ScoreFormEvaluation {
     weight: number;
     scaleMax: number;
     score: number | null;
+    comment: string | null;
   }[];
 }
+
+const COMMENT_MAX = 2000;
+const OVERALL_MAX = 5000;
 
 /** Returns an error message for a raw input value, or null if valid/empty. */
 function inputError(raw: string, scaleMax: number): string | null {
@@ -39,6 +44,10 @@ export function JudgeScoreForm({ evaluation, locked = false }: { evaluation: Sco
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(evaluation.criteria.map((c) => [c.criterionId, c.score == null ? "" : String(c.score)])),
   );
+  const [comments, setComments] = useState<Record<string, string>>(() =>
+    Object.fromEntries(evaluation.criteria.map((c) => [c.criterionId, c.comment ?? ""])),
+  );
+  const [overall, setOverall] = useState(evaluation.overallComment ?? "");
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
@@ -54,15 +63,15 @@ export function JudgeScoreForm({ evaluation, locked = false }: { evaluation: Sco
   async function save(): Promise<boolean> {
     const scores = evaluation.criteria.map((c) => {
       const raw = (values[c.criterionId] ?? "").trim();
-      return { criterionId: c.criterionId, score: raw === "" ? null : Number(raw) };
+      return { criterionId: c.criterionId, score: raw === "" ? null : Number(raw), comment: comments[c.criterionId] ?? "" };
     });
     const res = await fetch(`/api/judge/evaluations/${evaluation.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scores }),
+      body: JSON.stringify({ scores, overallComment: overall }),
     }).catch(() => null);
     if (!res?.ok) {
-      toast(res ? await readApiError(res, "Could not save the draft.") : "Network error — your scores were not saved. Try again.", "error");
+      toast(res ? await readApiError(res, "Could not save the draft.") : "Network error — your scores and remarks were not saved. Try again.", "error");
       return false;
     }
     return true;
@@ -130,7 +139,7 @@ export function JudgeScoreForm({ evaluation, locked = false }: { evaluation: Sco
             DRAFT
           </span>
           <p className="min-w-0 flex-1 basis-64 text-sm text-ink-2">
-            Score each criterion on its own scale. Save a draft any time; submit once every criterion is scored.
+            Score each criterion on its own scale and add remarks if you like. Save a draft any time; submit once every criterion is scored.
           </p>
         </div>
       )}
@@ -186,10 +195,58 @@ export function JudgeScoreForm({ evaluation, locked = false }: { evaluation: Sco
                   {err && <span id={`${inputId}-err`} role="alert" className="mt-1.5 text-xs font-medium" style={{ color: "var(--bad-text)" }}>⚠ {err}</span>}
                 </div>
               </div>
+              <div className="mt-3 sm:pl-9">
+                {readOnly ? (
+                  (comments[c.criterionId] ?? "").trim() && (
+                    <div className="rounded-lg border border-hair bg-surface-2 px-3 py-2">
+                      <div className="text-[11px] font-medium uppercase tracking-wider text-ink-3">Remarks</div>
+                      <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-ink-2">{comments[c.criterionId]}</p>
+                    </div>
+                  )
+                ) : (
+                  <label className="block">
+                    <span className="label">Remarks <span className="text-ink-3">(optional)</span></span>
+                    <textarea
+                      value={comments[c.criterionId] ?? ""}
+                      onChange={(e) => setComments((v) => ({ ...v, [c.criterionId]: e.target.value }))}
+                      disabled={busy}
+                      maxLength={COMMENT_MAX}
+                      rows={2}
+                      placeholder={`What stood out for ${c.criterionName}?`}
+                      className="field text-sm"
+                    />
+                  </label>
+                )}
+              </div>
             </li>
           );
         })}
       </ol>
+
+      {readOnly ? (
+        overall.trim() && (
+          <section className="card mt-2.5 p-4 sm:p-5" aria-label="Overall feedback">
+            <h2 className="card-title">Overall feedback</h2>
+            <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-ink-2">{overall}</p>
+          </section>
+        )
+      ) : (
+        <section className="card mt-2.5 p-4 sm:p-5">
+          <label htmlFor="overall-feedback" className="card-title block">Overall feedback <span className="text-sm font-normal text-ink-3">(optional)</span></label>
+          <p className="mt-1 text-xs text-ink-3">General remarks about the project — strengths, weaknesses, suggestions. Seen by organizers only; does not change the score.</p>
+          <textarea
+            id="overall-feedback"
+            value={overall}
+            onChange={(e) => setOverall(e.target.value)}
+            disabled={busy}
+            maxLength={OVERALL_MAX}
+            rows={4}
+            placeholder="e.g. Strong idea and clean demo; the AI part needs more evaluation."
+            className="field mt-3 text-sm"
+          />
+          <div className="mt-1 text-right text-[11px] text-ink-3 nums">{overall.length} / {OVERALL_MAX}</div>
+        </section>
+      )}
 
       {!submitted && !locked && (
         <div

@@ -29,6 +29,8 @@ export interface EvaluationCriterion {
   weight: number;
   scaleMax: number;
   score: number | null;
+  /** The judge's remark on this criterion (optional). */
+  comment: string | null;
 }
 
 export interface EvaluationView {
@@ -37,6 +39,8 @@ export interface EvaluationView {
   status: JudgeEvaluationStatus;
   finalScore: number | null;
   submittedAt: Date | null;
+  /** The judge's overall feedback (optional). */
+  overallComment: string | null;
   criteria: EvaluationCriterion[];
 }
 
@@ -44,11 +48,25 @@ type EvalWithScores = Prisma.JudgeEvaluationGetPayload<{ include: { scores: true
 
 const SUBMITTED_MSG = "This evaluation has been submitted and can no longer be changed";
 
+export const COMMENT_MAX = 2000;
+export const OVERALL_COMMENT_MAX = 5000;
+
+/** Remark text: trimmed; empty → null (clears it). Omitted → left unchanged. */
+const remark = (max: number, label: string) =>
+  z.string().max(max * 2).nullable().optional()
+    .transform((v) => (v == null ? v : v.trim() || null))
+    .refine((v) => v == null || v.length <= max, `${label} can be at most ${max} characters`);
+
 export const draftInput = z
   .object({
     scores: z
-      .array(z.object({ criterionId: z.string().min(1), score: z.number().int("scores must be whole numbers").nullable() }).strict())
+      .array(z.object({
+        criterionId: z.string().min(1),
+        score: z.number().int("scores must be whole numbers").nullable(),
+        comment: remark(COMMENT_MAX, "A criterion remark"),
+      }).strict())
       .max(100),
+    overallComment: remark(OVERALL_COMMENT_MAX, "Overall feedback"),
   })
   .strict();
 
@@ -220,9 +238,12 @@ export async function getOrStartEvaluation(db: JudgeEvalDb, judgeId: string, tea
   }
 }
 
-/** Save some or all scores on the judge's own DRAFT. Null clears a score. */
+/**
+ * Save some or all scores and remarks on the judge's own DRAFT. Null clears a score
+ * or remark; an omitted remark is left unchanged.
+ */
 export async function saveDraft(db: JudgeEvalDb, judgeId: string, evaluationId: string, input: z.input<typeof draftInput>) {
-  const { scores } = draftInput.parse(input);
+  const { scores, overallComment } = draftInput.parse(input);
   const current = await loadOwn(db, judgeId, evaluationId);
   await assertJudgingOpen(db);
 
@@ -245,11 +266,14 @@ export async function saveDraft(db: JudgeEvalDb, judgeId: string, evaluationId: 
   // invalidates any submit that read the old scores.
   const draft = { id: evaluationId, judgeId, status: "DRAFT" as const };
   const [bumped] = await whileJudgingOpen(db, [
-    db.judgeEvaluation.updateMany({ where: draft, data: { updatedAt: new Date() } }),
+    db.judgeEvaluation.updateMany({
+      where: draft,
+      data: { updatedAt: new Date(), ...(overallComment !== undefined ? { overallComment } : {}) },
+    }),
     ...scores.map((s) =>
       db.judgeCriterionScore.updateMany({
         where: { id: rowByCriterion.get(s.criterionId)!.id, evaluation: { is: draft } },
-        data: { score: s.score },
+        data: { score: s.score, ...(s.comment !== undefined ? { comment: s.comment } : {}) },
       }),
     ),
   ]);
@@ -310,6 +334,10 @@ async function toView(db: JudgeEvalDb, ev: EvalWithScores): Promise<EvaluationVi
       weight: s.weight,
       scaleMax: s.scaleMax,
       score: s.score,
+      comment: s.comment ?? null,
     }));
-  return { id: ev.id, teamId: ev.teamId, status: ev.status, finalScore: ev.finalScore, submittedAt: ev.submittedAt, criteria };
+  return {
+    id: ev.id, teamId: ev.teamId, status: ev.status, finalScore: ev.finalScore, submittedAt: ev.submittedAt,
+    overallComment: ev.overallComment ?? null, criteria,
+  };
 }

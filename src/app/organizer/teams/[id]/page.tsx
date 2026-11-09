@@ -20,6 +20,21 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
   });
   if (!team) notFound();
 
+  // Submitted judge evaluations (drafts are private to the judge until submitted).
+  const [judgeEvals, rubric] = await Promise.all([
+    prisma.judgeEvaluation.findMany({
+      where: { teamId: team.id, status: "SUBMITTED" },
+      orderBy: { submittedAt: "asc" },
+      select: {
+        id: true, finalScore: true, submittedAt: true, overallComment: true,
+        judge: { select: { name: true, email: true } },
+        scores: { select: { criterionId: true, criterionName: true, score: true, scaleMax: true, comment: true } },
+      },
+    }),
+    prisma.rubric.findFirst({ select: { criteria: { select: { id: true }, orderBy: { order: "asc" } } } }),
+  ]);
+  const critOrder = new Map((rubric?.criteria ?? []).map((c, i) => [c.id, i]));
+
   const latest = team.submissions.find((s) => s.status === "EVALUATED") ?? null;
   const ds = await getDataset();
   const ranked = [...ds.teams].sort((a, b) => b.totalScore - a.totalScore);
@@ -67,6 +82,16 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
       totalScore: s.totalScore,
       repoUrl: s.repoUrl,
       createdAt: s.createdAt.toISOString(),
+    })),
+    judgeFeedback: judgeEvals.map((e) => ({
+      id: e.id,
+      judge: e.judge.name || e.judge.email,
+      finalScore: e.finalScore,
+      submittedAt: e.submittedAt?.toISOString() ?? null,
+      overallComment: e.overallComment,
+      criteria: [...e.scores]
+        .sort((x, y) => (critOrder.get(x.criterionId) ?? 1e9) - (critOrder.get(y.criterionId) ?? 1e9))
+        .map((c) => ({ criterionId: c.criterionId, name: c.criterionName, score: c.score, scaleMax: c.scaleMax, comment: c.comment })),
     })),
     history: team.evaluationEvents.map((e) => ({ id: e.id, totalScore: e.totalScore ?? 0, createdAt: e.createdAt.toISOString() })),
   };

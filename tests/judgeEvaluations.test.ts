@@ -153,7 +153,7 @@ describe("judge evaluations", () => {
     const ev = await getOrStartEvaluation(t.db, "judgeA", "teamA");
     assert.equal(ev.status, "DRAFT");
     assert.equal(ev.criteria.length, CRITERIA.length);
-    assert.deepEqual(ev.criteria[1], { criterionId: "c2", criterionName: "AI Implementation", description: "Use of AI", weight: 25, scaleMax: 25, score: null });
+    assert.deepEqual(ev.criteria[1], { criterionId: "c2", criterionName: "AI Implementation", description: "Use of AI", weight: 25, scaleMax: 25, score: null, comment: null });
     // Opening again loads the same evaluation instead of creating another.
     const again = await getOrStartEvaluation(t.db, "judgeA", "teamA");
     assert.equal(again.id, ev.id);
@@ -334,5 +334,67 @@ describe("Phase 7: judge dashboard & team page", () => {
     await rejects(submitEvaluation(t.db, "judgeA", ev.id), 409);
     await rejects(getOrStartEvaluation(t.db, "judgeB", "teamA"), 409);
     assert.equal((await listTeamsWithStatus(t.db, "judgeA"))[0].status, "DRAFT");
+  });
+});
+
+describe("judge remarks (feedback)", () => {
+  let t: ReturnType<typeof makeDb>;
+  beforeEach(() => {
+    t = makeDb();
+    t.assignments.push({ judgeId: "judgeA", teamId: "teamA" }, { judgeId: "judgeB", teamId: "teamA" });
+  });
+  const crit = (v: { criteria: { criterionId: string; comment: string | null }[] }, id: string) => v.criteria.find((c) => c.criterionId === id)!.comment;
+
+  it("saves per-criterion remarks and overall feedback with the draft (trimmed)", async () => {
+    const ev = await getOrStartEvaluation(t.db, "judgeA", "teamA");
+    assert.equal(ev.overallComment, null);
+    const saved = await saveDraft(t.db, "judgeA", ev.id, {
+      scores: [{ criterionId: "c1", score: 10, comment: "  Original idea.  " }],
+      overallComment: ["Great demo.", "Needs tests."].join("\n"),
+    });
+    assert.equal(crit(saved, "c1"), "Original idea.");
+    assert.equal(crit(saved, "c2"), null);
+    assert.equal(saved.overallComment, ["Great demo.", "Needs tests."].join("\n"));
+  });
+
+  it("omitted remarks are kept; empty or null clears them", async () => {
+    const ev = await getOrStartEvaluation(t.db, "judgeA", "teamA");
+    await saveDraft(t.db, "judgeA", ev.id, { scores: [{ criterionId: "c1", score: 10, comment: "Keep me" }], overallComment: "Overall" });
+    let saved = await saveDraft(t.db, "judgeA", ev.id, { scores: [{ criterionId: "c1", score: 12 }] });
+    assert.equal(crit(saved, "c1"), "Keep me");
+    assert.equal(saved.overallComment, "Overall");
+    saved = await saveDraft(t.db, "judgeA", ev.id, { scores: [{ criterionId: "c1", score: 12, comment: "   " }], overallComment: null });
+    assert.equal(crit(saved, "c1"), null);
+    assert.equal(saved.overallComment, null);
+  });
+
+  it("remarks are optional for submitting and do not change the score", async () => {
+    const ev = await getOrStartEvaluation(t.db, "judgeA", "teamA");
+    await saveDraft(t.db, "judgeA", ev.id, { scores: FULL.map((s, i) => (i === 0 ? { ...s, comment: "Nice" } : s)), overallComment: "Solid" });
+    const done = await submitEvaluation(t.db, "judgeA", ev.id);
+    assert.equal(done.finalScore, FULL_TOTAL);
+    assert.equal(done.overallComment, "Solid");
+  });
+
+  it("remarks are locked after submit", async () => {
+    const ev = await getOrStartEvaluation(t.db, "judgeA", "teamA");
+    await saveDraft(t.db, "judgeA", ev.id, { scores: FULL });
+    await submitEvaluation(t.db, "judgeA", ev.id);
+    await rejects(saveDraft(t.db, "judgeA", ev.id, { scores: [], overallComment: "late edit" }), 409);
+    assert.equal((await getEvaluation(t.db, "judgeA", "teamA"))!.overallComment, null);
+  });
+
+  it("one judge cannot write remarks on another judge's evaluation", async () => {
+    const evA = await getOrStartEvaluation(t.db, "judgeA", "teamA");
+    await rejects(saveDraft(t.db, "judgeB", evA.id, { scores: [], overallComment: "hijack" }), 404);
+    assert.equal((await getEvaluation(t.db, "judgeA", "teamA"))!.overallComment, null);
+  });
+
+  it("rejects remarks over the length limit", async () => {
+    const ev = await getOrStartEvaluation(t.db, "judgeA", "teamA");
+    await assert.rejects(saveDraft(t.db, "judgeA", ev.id, { scores: [{ criterionId: "c1", score: 1, comment: "x".repeat(2001) }] }));
+    await assert.rejects(saveDraft(t.db, "judgeA", ev.id, { scores: [], overallComment: "x".repeat(5001) }));
+    const ok = await saveDraft(t.db, "judgeA", ev.id, { scores: [{ criterionId: "c1", score: 1, comment: "x".repeat(2000) }] });
+    assert.equal(crit(ok, "c1")!.length, 2000);
   });
 });

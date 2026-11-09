@@ -27,9 +27,18 @@ export interface TeamDetailData {
   radar: { axes: string[]; values: number[]; scaleMax: number; avg: number[] } | null;
   submissions: { id: string; status: string; totalScore: number | null; repoUrl: string; createdAt: string }[];
   history: { id: string; totalScore: number; createdAt: string }[];
+  /** Submitted judge evaluations with their remarks (organizer-only). */
+  judgeFeedback: {
+    id: string;
+    judge: string;
+    finalScore: number | null;
+    submittedAt: string | null;
+    overallComment: string | null;
+    criteria: { criterionId: string; name: string; score: number | null; scaleMax: number; comment: string | null }[];
+  }[];
 }
 
-const TABS = ["Overview", "Scores", "Evaluations", "Insights"] as const;
+const TABS = ["Overview", "Judge Feedback", "Scores", "Evaluations", "Insights"] as const;
 type Tab = (typeof TABS)[number];
 
 export function TeamDetail({ data }: { data: TeamDetailData }) {
@@ -101,6 +110,47 @@ export function TeamDetail({ data }: { data: TeamDetailData }) {
               </div>
             </div>
           </div>
+        )}
+
+        {tab === "Judge Feedback" && (
+          data.judgeFeedback.length === 0 ? (
+            <p className="card px-4 py-8 text-center text-sm text-ink-3">No submitted judge evaluations yet. Remarks appear here once a judge submits.</p>
+          ) : (
+            <div className="flex flex-col gap-4">
+              {data.judgeFeedback.map((f) => {
+                const remarks = f.criteria.filter((c) => c.comment);
+                return (
+                  <section key={f.id} className="card p-5">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <h3 className="text-sm font-semibold text-ink">{f.judge}</h3>
+                      <div className="text-xs text-ink-3">
+                        <span className="nums text-sm font-semibold text-ink">{f.finalScore?.toFixed(2) ?? "—"}</span> / 100
+                        {f.submittedAt && <> · {new Date(f.submittedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</>}
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <div className="text-[11px] font-medium uppercase tracking-wider text-ink-3">Overall feedback</div>
+                      <p className={`mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed ${f.overallComment ? "text-ink-2" : "text-ink-3"}`}>
+                        {f.overallComment ?? "No overall feedback."}
+                      </p>
+                    </div>
+                    <ul className="mt-4 flex flex-col divide-y divide-[var(--glass-border)] border-t border-[var(--glass-border)]">
+                      {f.criteria.map((c) => (
+                        <li key={c.criterionId} className="py-2.5">
+                          <div className="flex items-center justify-between gap-3 text-sm">
+                            <span className="text-ink">{c.name}</span>
+                            <span className="nums text-ink-2">{c.score ?? "—"} <span className="text-ink-3">/ {c.scaleMax}</span></span>
+                          </div>
+                          {c.comment && <p className="mt-1 whitespace-pre-wrap break-words text-sm text-ink-2">{c.comment}</p>}
+                        </li>
+                      ))}
+                    </ul>
+                    {remarks.length === 0 && <p className="mt-2 text-xs text-ink-3">No remarks on individual criteria.</p>}
+                  </section>
+                );
+              })}
+            </div>
+          )
         )}
 
         {tab === "Scores" && (
