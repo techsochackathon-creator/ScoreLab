@@ -33,6 +33,7 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
     university: team.university,
     track: team.track,
     members: team.memberNames,
+    leaderEmail: team.leaderEmail,
     projectTitle: team.projectTitle,
     projectDescription: team.projectDescription,
     technologies: team.technologies,

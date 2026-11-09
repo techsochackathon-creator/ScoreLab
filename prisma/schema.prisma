@@ -144,6 +144,8 @@ model Team {
   university String
   track      String
   memberNames String[]
+  /// Team leader's contact email. Organizer-only: never shown to judges, publicly or to the AI.
+  leaderEmail String?
 
   // Optional project profile (shown on the team detail page).
   projectTitle       String?

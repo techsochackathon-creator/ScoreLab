@@ -27,7 +27,7 @@ const numericCells = (sheetXml: string) =>
   [...sheetXml.matchAll(/<c ([^>]*)>(?:<f>[^<]*<\/f>)?<v>([^<]*)<\/v><\/c>/g)].filter((m) => !/\bt="/.test(m[1])).map((m) => Number(m[2]));
 
 const team = (o: Partial<TeamExportRow> = {}): TeamExportRow => ({
-  teamCode: "T01", name: "Rockets", projectTitle: "Moonshot", memberNames: ["Ada", "Alan"], repoUrl: "https://github.com/r/m",
+  teamCode: "T01", name: "Rockets", projectTitle: "Moonshot", memberNames: ["Ada", "Alan"], leaderEmail: "ada@example.com", repoUrl: "https://github.com/r/m",
   university: "FAST", track: "AI/ML", status: "Active", disqualifiedReason: null, createdAt: new Date("2026-10-02T18:04:47Z"), ...o,
 });
 
@@ -62,12 +62,12 @@ describe("Teams export", () => {
   it("CSV: header + one row per team, members joined, status and date", () => {
     const out = lines(teamsToCsv([team()]));
     assert.equal(out[0], TEAM_HEADERS.join(","));
-    assert.equal(out[1], "T01,Rockets,Moonshot,Ada; Alan,2,https://github.com/r/m,FAST,AI/ML,Active,,2026-10-02 18:04");
+    assert.equal(out[1], "T01,Rockets,Moonshot,Ada; Alan,2,ada@example.com,https://github.com/r/m,FAST,AI/ML,Active,,2026-10-02 18:04");
   });
 
   it("CSV: missing optional fields become empty cells, not 'null'", () => {
-    const out = lines(teamsToCsv([team({ projectTitle: null, memberNames: [], repoUrl: null, university: "", track: "" })]));
-    assert.equal(out[1], "T01,Rockets,,,0,,,,Active,,2026-10-02 18:04");
+    const out = lines(teamsToCsv([team({ projectTitle: null, memberNames: [], leaderEmail: null, repoUrl: null, university: "", track: "" })]));
+    assert.equal(out[1], "T01,Rockets,,,0,,,,,Active,,2026-10-02 18:04");
     assert.ok(!out[1].includes("null") && !out[1].includes("undefined"));
   });
 

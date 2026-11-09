@@ -17,6 +17,12 @@ const repoUrl = z
   .nullable()
   .optional();
 
+const leaderEmail = z
+  .union([z.literal(""), z.string().trim().toLowerCase().email("enter a valid email").max(254)])
+  .transform((v) => (v === "" ? null : v))
+  .nullable()
+  .optional();
+
 const base = {
   teamCode: z.string().trim().min(1, "team code is required").max(64),
   name: z.string().trim().min(1, "name is required").max(200),
@@ -25,6 +31,7 @@ const base = {
   projectDescription: z.string().trim().max(2000).optional().nullable(),
   technologies: z.array(z.string().trim().min(1)).default([]),
   repoUrl,
+  leaderEmail,
 };
 
 export const teamCreateInput = z.object({

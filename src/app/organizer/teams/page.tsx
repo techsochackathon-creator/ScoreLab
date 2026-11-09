@@ -16,6 +16,7 @@ export default async function TeamsPage() {
     university: t.university,
     track: t.track,
     memberNames: t.memberNames,
+    leaderEmail: t.leaderEmail,
     projectTitle: t.projectTitle,
     technologies: t.technologies,
     repoUrl: t.repoUrl,

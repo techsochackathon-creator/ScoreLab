@@ -1,38 +1,49 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { HttpError, requireOrganizer } from "@/lib/requireOrganizer";
 import { assertJudgingOpen, JudgeServiceError, TEAMS_FINALIZED_MSG, whileJudgingOpen } from "@/lib/judges";
+import { readCsvRows } from "@/lib/imports/csvReader";
+import { MAX_XLSX_BYTES, readXlsxRows, XlsxReadError } from "@/lib/imports/xlsxReader";
+import { planTeamImport } from "@/lib/imports/teamImport";
+
+export const runtime = "nodejs";
 
 /**
- * POST /api/teams/import — CSV bulk import (upsert by teamCode).
- * Body: { csv: string }
- * Columns (header row required): teamCode, name, university, track, members
- * `members` is a single cell with names separated by ; or |.
+ * POST /api/teams/import — bulk import teams (upsert by Team ID). Organizer only.
+ * Body: multipart form with `file` (.xlsx or .csv), or JSON { csv: string } for pasted text.
+ * Rows with missing details are still added; see src/lib/imports/teamImport.ts.
  */
 
-/** Minimal RFC-4180-ish CSV parser (handles quoted fields, commas, escaped quotes). */
-function parseCsv(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = "";
-  let inQuotes = false;
-  const s = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+const bad = (error: string, status = 400) => NextResponse.json({ error }, { status });
 
-  for (let i = 0; i < s.length; i++) {
-    const ch = s[i];
-    if (inQuotes) {
-      if (ch === '"') {
-        if (s[i + 1] === '"') { field += '"'; i++; }
-        else inQuotes = false;
-      } else field += ch;
-    } else if (ch === '"') inQuotes = true;
-    else if (ch === ",") { row.push(field); field = ""; }
-    else if (ch === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
-    else field += ch;
+async function readRows(req: Request): Promise<string[][] | NextResponse> {
+  const type = req.headers.get("content-type") ?? "";
+  if (type.includes("multipart/form-data")) {
+    let file: FormDataEntryValue | null;
+    try {
+      file = (await req.formData()).get("file");
+    } catch {
+      return bad("Invalid upload");
+    }
+    if (!(file instanceof File) || file.size === 0) return bad("Choose a .xlsx or .csv file to import.");
+    if (file.size > MAX_XLSX_BYTES) return bad("The file is too large (max 4 MB).");
+    const name = file.name.toLowerCase();
+    if (name.endsWith(".xls")) return bad("Old .xls files aren't supported. In Excel, use File → Save As → Excel Workbook (.xlsx).");
+    if (name.endsWith(".csv") || name.endsWith(".txt")) return readCsvRows(await file.text());
+    try {
+      return readXlsxRows(new Uint8Array(await file.arrayBuffer()));
+    } catch (e) {
+      if (e instanceof XlsxReadError) return bad(e.message);
+      throw e;
+    }
   }
-  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
-  return rows.filter((r) => r.some((c) => c.trim() !== ""));
+  try {
+    const csv = String((await req.json()).csv ?? "");
+    if (!csv.trim()) return bad("CSV is empty");
+    return readCsvRows(csv);
+  } catch {
+    return bad("Invalid body");
+  }
 }
 
 export async function POST(req: Request) {
@@ -51,79 +62,35 @@ export async function POST(req: Request) {
     throw e;
   }
 
-  let csv: string;
-  try {
-    csv = String((await req.json()).csv ?? "");
-  } catch {
-    return NextResponse.json({ error: "Invalid body" }, { status: 400 });
-  }
-  if (!csv.trim()) return NextResponse.json({ error: "CSV is empty" }, { status: 400 });
+  const rows = await readRows(req);
+  if (rows instanceof NextResponse) return rows;
 
-  const rows = parseCsv(csv);
-  if (rows.length < 2) {
-    return NextResponse.json({ error: "CSV needs a header row plus at least one team" }, { status: 400 });
-  }
+  const existing = await prisma.team.findMany({ select: { teamCode: true, name: true } });
+  const plan = planTeamImport(rows, existing);
+  if (!plan.ok) return bad(plan.error);
 
-  const header = rows[0].map((h) => h.trim().toLowerCase());
-  const col = (names: string[]) => header.findIndex((h) => names.includes(h));
-  const iCode = col(["teamcode", "team code", "code", "id"]);
-  const iName = col(["name", "team name", "team"]);
-  const iUni = col(["university", "school", "college"]);
-  const iTrack = col(["track", "category"]);
-  const iMembers = col(["members", "membernames", "member names", "team members"]);
-  const iRepo = col(["repourl", "repo url", "repo", "repository", "github", "github url"]);
-
-  if (iCode < 0 || iName < 0) {
-    return NextResponse.json(
-      { error: "CSV must have columns: teamCode, name (repoUrl and members optional)" },
-      { status: 400 },
-    );
-  }
-
-  const errors: string[] = [];
   let created = 0;
   let updated = 0;
-
-  for (let r = 1; r < rows.length; r++) {
-    const cells = rows[r];
-    const teamCode = (cells[iCode] ?? "").trim();
-    const name = (cells[iName] ?? "").trim();
-    const university = iUni >= 0 ? (cells[iUni] ?? "").trim() : null;
-    const track = iTrack >= 0 ? (cells[iTrack] ?? "").trim() : null;
-    const repoRaw = iRepo >= 0 ? (cells[iRepo] ?? "").trim() : null;
-    const memberNames =
-      iMembers >= 0
-        ? (cells[iMembers] ?? "")
-            .split(/[;|]/)
-            .map((m) => m.trim())
-            .filter(Boolean)
-        : [];
-
-    if (!teamCode || !name) {
-      errors.push(`Row ${r + 1}: missing team code or name`);
-      continue;
-    }
-    if (repoRaw && !z.string().url().safeParse(repoRaw).success) {
-      errors.push(`Row ${r + 1}: "${repoRaw}" is not a valid repository URL`);
-      continue;
-    }
-    // Columns absent from the CSV leave an existing team's values unchanged.
-    const optional = {
-      ...(university !== null ? { university } : {}),
-      ...(track !== null ? { track: track || "General" } : {}),
-      ...(repoRaw !== null ? { repoUrl: repoRaw || null } : {}),
-      ...(iMembers >= 0 ? { memberNames } : {}),
-    };
-
-    const existing = await prisma.team.findUnique({ where: { teamCode } });
+  for (const op of plan.ops) {
+    const { data, teamCode } = op;
+    const write = op.kind === "create"
+      ? prisma.team.create({
+          data: {
+            teamCode,
+            name: data.name ?? `Unnamed team (${teamCode})`,
+            projectTitle: data.projectTitle ?? null,
+            university: data.university ?? "",
+            track: data.track ?? "General",
+            memberNames: data.memberNames ?? [],
+            repoUrl: data.repoUrl ?? null,
+            leaderEmail: data.leaderEmail ?? null,
+          },
+        })
+      : prisma.team.update({ where: { teamCode }, data });
     try {
-      if (existing) {
-        await whileJudgingOpen(prisma, [prisma.team.update({ where: { teamCode }, data: { name, ...optional } })], TEAMS_FINALIZED_MSG);
-        updated++;
-      } else {
-        await whileJudgingOpen(prisma, [prisma.team.create({ data: { teamCode, name, university: university ?? "", track: track || "General", memberNames, repoUrl: repoRaw || null } })], TEAMS_FINALIZED_MSG);
-        created++;
-      }
+      await whileJudgingOpen(prisma, [write], TEAMS_FINALIZED_MSG);
+      if (op.kind === "create") created++;
+      else updated++;
     } catch (e) {
       // Finalized mid-import: stop; rows already written committed before finalization.
       if (e instanceof JudgeServiceError) return NextResponse.json({ error: e.message, created, updated }, { status: e.status });
@@ -131,5 +98,5 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, created, updated, errors });
+  return NextResponse.json({ ok: true, created, updated, warnings: plan.warnings });
 }

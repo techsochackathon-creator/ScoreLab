@@ -15,6 +15,7 @@ export interface TeamExportRow {
   name: string;
   projectTitle: string | null;
   memberNames: string[];
+  leaderEmail: string | null;
   repoUrl: string | null;
   university: string;
   track: string;
@@ -27,7 +28,7 @@ export async function getTeamsExportData(db: Pick<PrismaClient, "team">): Promis
   const teams = await db.team.findMany({
     orderBy: [{ track: "asc" }, { name: "asc" }],
     select: {
-      teamCode: true, name: true, projectTitle: true, memberNames: true, repoUrl: true,
+      teamCode: true, name: true, projectTitle: true, memberNames: true, leaderEmail: true, repoUrl: true,
       university: true, track: true, disqualifiedAt: true, disqualifiedReason: true, createdAt: true,
     },
   });
@@ -36,6 +37,7 @@ export async function getTeamsExportData(db: Pick<PrismaClient, "team">): Promis
     name: t.name,
     projectTitle: t.projectTitle,
     memberNames: t.memberNames,
+    leaderEmail: t.leaderEmail,
     repoUrl: t.repoUrl,
     university: t.university,
     track: t.track,
@@ -48,7 +50,7 @@ export async function getTeamsExportData(db: Pick<PrismaClient, "team">): Promis
 const blank = (s: string | null | undefined) => (s && s.trim() ? s : null);
 
 export const TEAM_HEADERS = [
-  "Team ID", "Team Name", "Project Name", "Team Members", "Member Count", "GitHub Repository",
+  "Team ID", "Team Name", "Project Name", "Team Members", "Member Count", "Team Leader Email", "GitHub Repository",
   "University", "Track", "Team Status", "Disqualification Reason", "Registration Date (UTC)",
 ];
 
@@ -57,7 +59,7 @@ export function teamsToCsv(rows: TeamExportRow[]): string {
     TEAM_HEADERS,
     rows.map((t) => [
       t.teamCode, t.name, blank(t.projectTitle), t.memberNames.join("; ") || null, t.memberNames.length,
-      blank(t.repoUrl), blank(t.university), blank(t.track), t.status, blank(t.disqualifiedReason), csvDateTime(t.createdAt),
+      blank(t.leaderEmail), blank(t.repoUrl), blank(t.university), blank(t.track), t.status, blank(t.disqualifiedReason), csvDateTime(t.createdAt),
     ]),
   );
 }
@@ -72,7 +74,7 @@ export async function teamsToXlsx(rows: TeamExportRow[]): Promise<Buffer> {
     ...rows.map((t) => [
       text(t.teamCode), text(t.name), text(t.projectTitle), text(t.memberNames.join("; ")),
       { value: t.memberNames.length, type: Number },
-      text(t.repoUrl), text(t.university), text(t.track), text(t.status), text(t.disqualifiedReason),
+      text(t.leaderEmail), text(t.repoUrl), text(t.university), text(t.track), text(t.status), text(t.disqualifiedReason),
       { value: t.createdAt, type: Date, format: "yyyy-mm-dd hh:mm" },
     ]),
   ];
@@ -83,7 +85,7 @@ export async function teamsToXlsx(rows: TeamExportRow[]): Promise<Buffer> {
     ),
   ];
   return writeXlsxFile([
-    { data: teamsSheet, sheet: "Teams", stickyRowsCount: 1, columns: [{ width: 14 }, { width: 26 }, { width: 26 }, { width: 40 }, { width: 10 }, { width: 44 }, { width: 22 }, { width: 14 }, { width: 13 }, { width: 30 }, { width: 20 }] },
+    { data: teamsSheet, sheet: "Teams", stickyRowsCount: 1, columns: [{ width: 14 }, { width: 26 }, { width: 26 }, { width: 40 }, { width: 10 }, { width: 30 }, { width: 44 }, { width: 22 }, { width: 14 }, { width: 13 }, { width: 30 }, { width: 20 }] },
     { data: membersSheet, sheet: "Team Members", stickyRowsCount: 1, columns: [{ width: 14 }, { width: 26 }, { width: 10 }, { width: 30 }] },
   ]).toBuffer();
 }

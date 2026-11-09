@@ -14,6 +14,7 @@ export interface TeamDetailData {
   university: string;
   track: string;
   members: string[];
+  leaderEmail: string | null;
   projectTitle: string | null;
   projectDescription: string | null;
   technologies: string[];
@@ -90,6 +91,14 @@ export function TeamDetail({ data }: { data: TeamDetailData }) {
                   ))}
                 </ul>
               )}
+              <div className="mt-4 border-t border-[var(--glass-border)] pt-3">
+                <div className="text-xs font-medium uppercase tracking-wider text-ink-3">Team leader email</div>
+                {data.leaderEmail ? (
+                  <a href={`mailto:${data.leaderEmail}`} className="mt-1 block break-all text-sm text-ink-2 hover:text-brand-text">{data.leaderEmail}</a>
+                ) : (
+                  <p className="mt-1 text-sm text-ink-3">Not provided.</p>
+                )}
+              </div>
             </div>
           </div>
         )}

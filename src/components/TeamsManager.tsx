@@ -16,13 +16,15 @@ export interface TeamRow {
   university: string;
   track: string;
   memberNames: string[];
+  leaderEmail: string | null;
   projectTitle: string | null;
   technologies: string[];
   repoUrl: string | null;
 }
 
-type Draft = { teamCode: string; name: string; members: string; projectTitle: string; repoUrl: string };
-const EMPTY: Draft = { teamCode: "", name: "", members: "", projectTitle: "", repoUrl: "" };
+type Draft = { teamCode: string; name: string; members: string; leaderEmail: string; projectTitle: string; repoUrl: string };
+const EMPTY: Draft = { teamCode: "", name: "", members: "", leaderEmail: "", projectTitle: "", repoUrl: "" };
+type ImportResult = { created: number; updated: number; warnings: string[] };
 
 /** `locked`: results are finalized — the API rejects team changes, so the controls are hidden. */
 export function TeamsManager({ initialTeams, locked = false }: { initialTeams: TeamRow[]; locked?: boolean }) {
@@ -33,6 +35,8 @@ export function TeamsManager({ initialTeams, locked = false }: { initialTeams: T
   const [busy, setBusy] = useState(false);
   const [showCsv, setShowCsv] = useState(false);
   const [csv, setCsv] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [result, setResult] = useState<ImportResult | null>(null);
 
   function startAdd() { setEditingId("new"); setDraft(EMPTY); }
   function startEdit(t: TeamRow) {
@@ -41,6 +45,7 @@ export function TeamsManager({ initialTeams, locked = false }: { initialTeams: T
       teamCode: t.teamCode,
       name: t.name,
       members: t.memberNames.join(", "),
+      leaderEmail: t.leaderEmail ?? "",
       projectTitle: t.projectTitle ?? "",
       repoUrl: t.repoUrl ?? "",
     });
@@ -52,6 +57,7 @@ export function TeamsManager({ initialTeams, locked = false }: { initialTeams: T
       teamCode: draft.teamCode.trim(),
       name: draft.name.trim(),
       memberNames: draft.members.split(",").map((m) => m.trim()).filter(Boolean),
+      leaderEmail: draft.leaderEmail.trim() || null,
       projectTitle: draft.projectTitle.trim() || null,
       repoUrl: draft.repoUrl.trim() || null,
     };
@@ -72,13 +78,41 @@ This permanently deletes the team together with its AI submissions, judge assign
     else { const d = await res.json().catch(() => ({})); toast(friendlyApiError(res.status, d.error, "Delete failed"), "error"); }
   }
 
-  async function importCsv() {
+  async function runImport() {
     setBusy(true);
-    const res = await fetch("/api/teams/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ csv }) });
+    setResult(null);
+    let res: Response;
+    try {
+      if (file) {
+        const form = new FormData();
+        form.append("file", file);
+        res = await fetch("/api/teams/import", { method: "POST", body: form });
+      } else {
+        res = await fetch("/api/teams/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ csv }) });
+      }
+    } catch {
+      setBusy(false);
+      toast("Couldn't reach the server. Check your connection and try again.", "error");
+      return;
+    }
     const d = await res.json().catch(() => ({}));
     setBusy(false);
-    if (res.ok) { toast(`Imported ${d.created} new, ${d.updated} updated`); setCsv(""); setShowCsv(false); router.refresh(); }
-    else toast(friendlyApiError(res.status, d.error, "Import failed"), "error");
+    if (res.ok) {
+      const warnings: string[] = d.warnings ?? [];
+      toast(`Imported ${d.created} new, ${d.updated} updated${warnings.length ? ` — ${warnings.length} need attention` : ""}`);
+      setCsv("");
+      setFile(null);
+      if (warnings.length) setResult({ created: d.created, updated: d.updated, warnings });
+      else setShowCsv(false);
+      router.refresh();
+    } else toast(friendlyApiError(res.status, d.error, "Import failed"), "error");
+  }
+
+  function chooseFile(f: File | undefined) {
+    if (!f) return;
+    setResult(null);
+    if (/\.(csv|txt)$/i.test(f.name)) { setFile(null); f.text().then(setCsv); }
+    else { setFile(f); setCsv(""); }
   }
 
   const repoShort = (u: string) => u.replace(/^https?:\/\/(www\.)?github\.com\//, "").replace(/\.git$/, "");
@@ -90,7 +124,7 @@ This permanently deletes the team together with its AI submissions, judge assign
         <div>
           <h1 className="page-title">Teams</h1>
           <p className="page-sub">
-            Manage participating teams, or bulk-import from CSV.
+            Manage participating teams, or bulk-import from Excel or CSV.
             {initialTeams.length > 0 && (
               <span className="ml-1 text-ink-3">
                 {teamsWithRepo.length}/{initialTeams.length} have repo URLs — ready for batch evaluation.
@@ -102,7 +136,7 @@ This permanently deletes the team together with its AI submissions, judge assign
           <ExportMenu kind="teams" />
           {!locked && (
             <>
-              <button onClick={() => setShowCsv((v) => !v)} className="btn-ghost">Import CSV</button>
+              <button onClick={() => { setShowCsv((v) => !v); setResult(null); }} className="btn-ghost">Import</button>
               <button onClick={startAdd} className="btn-primary"><Icon.plus size={16} /> Add team</button>
             </>
           )}
@@ -117,14 +151,36 @@ This permanently deletes the team together with its AI submissions, judge assign
 
       {showCsv && (
         <div className="card mb-4 p-4">
-          <p className="mb-2 text-xs text-ink-3">Header row required. Columns: <span className="mono text-ink-2">teamCode, name, repoUrl, members</span>. Members separated by <span className="mono">;</span> or <span className="mono">|</span>. Existing codes update.</p>
-          <textarea value={csv} onChange={(e) => setCsv(e.target.value)} rows={5} placeholder={"teamCode,name,repoUrl,members\nT01,Rockets,https://github.com/team/project,Ada; Alan"} className="field mono text-xs" />
+          <p className="mb-2 text-xs text-ink-3">
+            Upload an Excel (<span className="mono">.xlsx</span>) or CSV file, or paste CSV below. First row is the header, e.g.{" "}
+            <span className="mono text-ink-2">Team ID, Team Name, Project Name, Team Members, Team Leader Email, GitHub Repository</span>.
+            Members separated by <span className="mono">;</span> or <span className="mono">,</span>. Existing Team IDs are updated.
+            Rows with missing details are still added — you can fix them afterwards.
+          </p>
+          {file ? (
+            <div className="field flex items-center justify-between gap-3 text-sm">
+              <span className="truncate"><Icon.teams size={14} /> {file.name}</span>
+              <button onClick={() => setFile(null)} className="text-xs text-ink-3 hover:text-ink">Remove</button>
+            </div>
+          ) : (
+            <textarea value={csv} onChange={(e) => setCsv(e.target.value)} rows={5} placeholder={"Team ID,Team Name,Team Members,Team Leader Email,GitHub Repository\nT01,Rockets,Ada; Alan,ada@example.com,https://github.com/team/project"} className="field mono text-xs" />
+          )}
           <div className="mt-2 flex items-center gap-3">
-            <label className="link-brand cursor-pointer text-xs">Load .csv file
-              <input type="file" accept=".csv,text/csv" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (f) setCsv(await f.text()); }} />
+            <label className="link-brand cursor-pointer text-xs">Choose .xlsx or .csv file
+              <input type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden"
+                onChange={(e) => { chooseFile(e.target.files?.[0]); e.target.value = ""; }} />
             </label>
-            <button onClick={importCsv} disabled={busy || !csv.trim()} className="btn-primary ml-auto">{busy ? "Importing…" : "Import"}</button>
+            <button onClick={runImport} disabled={busy || (!file && !csv.trim())} className="btn-primary ml-auto">{busy ? "Importing…" : "Import"}</button>
           </div>
+          {result && (
+            <div className="mt-3 notice notice-warn text-xs" role="status">
+              <p className="font-medium">Imported {result.created} new, {result.updated} updated. Check these rows and fix them by editing the team:</p>
+              <ul className="mt-1 list-disc pl-5">
+                {result.warnings.slice(0, 50).map((w) => <li key={w}>{w}</li>)}
+              </ul>
+              {result.warnings.length > 50 && <p className="mt-1">…and {result.warnings.length - 50} more.</p>}
+            </div>
+          )}
         </div>
       )}
 
@@ -137,6 +193,7 @@ This permanently deletes the team together with its AI submissions, judge assign
             <label className="sm:col-span-2"><span className="label">GitHub repository URL</span><input className="field mono" value={draft.repoUrl} onChange={(e) => setDraft({ ...draft, repoUrl: e.target.value })} placeholder="https://github.com/team/project" inputMode="url" /></label>
             <label><span className="label">Project name <span className="text-ink-3">(optional)</span></span><input className="field" value={draft.projectTitle} onChange={(e) => setDraft({ ...draft, projectTitle: e.target.value })} placeholder="e.g. AI Health Tracker" /></label>
             <label><span className="label">Team leader / Members <span className="text-ink-3">(optional, comma-separated)</span></span><input className="field" value={draft.members} onChange={(e) => setDraft({ ...draft, members: e.target.value })} placeholder="e.g. Ali Khan, Sara Ahmed" /></label>
+            <label className="sm:col-span-2"><span className="label">Team leader email <span className="text-ink-3">(optional)</span></span><input className="field" type="email" value={draft.leaderEmail} onChange={(e) => setDraft({ ...draft, leaderEmail: e.target.value })} placeholder="e.g. ali.khan@example.com" inputMode="email" autoComplete="off" /></label>
           </div>
           <div className="mt-3 flex gap-2">
             <button onClick={save} disabled={busy} className="btn-primary">{busy ? "Saving…" : "Save team"}</button>
@@ -146,7 +203,7 @@ This permanently deletes the team together with its AI submissions, judge assign
       )}
 
       {initialTeams.length === 0 ? (
-        <EmptyState icon="teams" title="No teams have been added yet." description={locked ? undefined : "Add a team or import a CSV to get started."} action={locked ? undefined : <button onClick={startAdd} className="btn-primary"><Icon.plus size={16} /> Add team</button>} />
+        <EmptyState icon="teams" title="No teams have been added yet." description={locked ? undefined : "Add a team or import an Excel or CSV file to get started."} action={locked ? undefined : <button onClick={startAdd} className="btn-primary"><Icon.plus size={16} /> Add team</button>} />
       ) : (
         <div className="card overflow-hidden">
           <div className="hidden grid-cols-[0.7fr_1.2fr_1.8fr_0.5fr_auto] gap-4 border-b border-[var(--glass-border)] px-4 py-2.5 text-xs font-medium uppercase tracking-wider text-ink-3 sm:grid">
