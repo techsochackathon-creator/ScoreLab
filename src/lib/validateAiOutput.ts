@@ -71,18 +71,13 @@ function looksLikeFileRef(ref: string): boolean {
   return ref.includes("/") || FILE_EXT_RE.test(ref.trim());
 }
 
-/**
- * Rubric weights precondition (requirement #9). Weights are relative (each
- * criterion counts as weight / total), so they must be whole numbers ≥ 0 with a
- * positive total. A rubric totalling 100 reads as plain percentages.
- */
+/** Rubric weights precondition (requirement #9): must total 100%. */
 export function validateRubricWeights(criteria: { weight: number }[]): {
   valid: boolean;
   sum: number;
 } {
   const sum = criteria.reduce((a, c) => a + (Number(c.weight) || 0), 0);
-  const wholeNonNegative = criteria.every((c) => Number.isInteger(c.weight) && c.weight >= 0);
-  return { valid: wholeNonNegative && sum > 0, sum };
+  return { valid: sum === 100, sum };
 }
 
 export function validateAiOutput(raw: unknown, opts: ValidateOptions): ValidationResult {

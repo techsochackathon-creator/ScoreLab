@@ -7,7 +7,7 @@ import { Icon } from "@/components/ui/icons";
 import { friendlyApiError } from "@/lib/uiErrors";
 
 export interface AnchorDraft { score: number; label: string }
-/** `weight` is relative (stored as max score × multiplier); see src/lib/scoring.ts. */
+/** `weight` is a whole-number percentage (all criteria total 100); `scaleMax` is the max score. */
 export interface CriterionDraft { name: string; description: string; weight: number; scaleMax: number; anchors: AnchorDraft[] }
 interface Editable {
   _id: string;
@@ -15,8 +15,8 @@ interface Editable {
   description: string;
   /** Max score, as typed. */
   max: string;
-  /** Weight multiplier, as typed (e.g. "3" for ×3). */
-  mult: string;
+  /** Weight %, as typed. */
+  weight: string;
   anchors: (AnchorDraft & { _id: string })[];
 }
 
@@ -26,25 +26,22 @@ const toEditable = (c: CriterionDraft): Editable => ({
   name: c.name,
   description: c.description,
   max: String(c.scaleMax),
-  mult: String(Math.round((c.weight / c.scaleMax) * 100) / 100),
+  weight: String(c.weight),
   anchors: c.anchors.map((a) => ({ ...a, _id: uid() })),
 });
 
 const num = (s: string) => (s.trim() === "" ? NaN : Number(s));
 const maxOf = (c: Editable) => num(c.max);
-const multOf = (c: Editable) => num(c.mult);
-/** Stored weight = max × multiplier, as a whole number. */
 const weightOf = (c: Editable) => {
-  const m = maxOf(c);
-  const x = multOf(c);
-  return Number.isFinite(m) && Number.isFinite(x) ? Math.round(m * x) : 0;
+  const w = num(c.weight);
+  return Number.isFinite(w) ? w : 0;
 };
 function criterionError(c: Editable): string | null {
   const m = maxOf(c);
-  const x = multOf(c);
+  const w = num(c.weight);
   if (!c.name.trim()) return "Name is required";
   if (!Number.isInteger(m) || m < 1 || m > 100) return "Max score must be a whole number from 1 to 100";
-  if (!Number.isFinite(x) || x < 0 || x > 100) return "Weight must be a number from 0 to 100";
+  if (!Number.isInteger(w) || w < 0 || w > 100) return "Weight must be a whole number from 0 to 100";
   if (c.anchors.some((a) => !Number.isInteger(a.score) || a.score < 0 || a.score > m)) return `Score bands must start between 0 and ${m}`;
   return null;
 }
@@ -56,10 +53,11 @@ export function RubricEditor({ initialName, initialCriteria, locked = false }: {
   const [criteria, setCriteria] = useState<Editable[]>(initialCriteria.map(toEditable));
   const [saving, setSaving] = useState(false);
 
-  const totalPoints = useMemo(() => criteria.reduce((s, c) => s + weightOf(c), 0), [criteria]);
-  const pct = (c: Editable) => (totalPoints > 0 ? (weightOf(c) / totalPoints) * 100 : 0);
+  const weightSum = useMemo(() => criteria.reduce((s, c) => s + weightOf(c), 0), [criteria]);
+  const sumOk = weightSum === 100;
+  const over = weightSum > 100;
   const errors = criteria.map(criterionError);
-  const canSave = criteria.length > 0 && totalPoints > 0 && errors.every((e) => !e);
+  const canSave = criteria.length > 0 && sumOk && errors.every((e) => !e);
 
   function patch(id: string, p: Partial<Editable>) { setCriteria((prev) => prev.map((c) => (c._id === id ? { ...c, ...p } : c))); }
   function patchAnchor(id: string, aid: string, p: Partial<AnchorDraft>) {
@@ -71,7 +69,9 @@ export function RubricEditor({ initialName, initialCriteria, locked = false }: {
   function removeAnchor(id: string, aid: string) {
     setCriteria((prev) => prev.map((c) => (c._id === id ? { ...c, anchors: c.anchors.filter((a) => a._id !== aid) } : c)));
   }
-  function add() { setCriteria((prev) => [...prev, { _id: uid(), name: "", description: "", max: "10", mult: "1", anchors: [] }]); }
+  function add() { setCriteria((prev) => [...prev, { _id: uid(), name: "", description: "", max: "10", weight: "0", anchors: [] }]); }
+  /** Common case: a criterion's weight equals its max score (the scores then add up to 100). */
+  function weightsFromMax() { setCriteria((prev) => prev.map((c) => ({ ...c, weight: c.max }))); }
   function remove(id: string) { setCriteria((prev) => prev.filter((c) => c._id !== id)); }
 
   async function save() {
@@ -98,7 +98,7 @@ export function RubricEditor({ initialName, initialCriteria, locked = false }: {
       <header className="mb-6">
         <h1 className="page-title">Rubric</h1>
         <p className="page-sub">
-          Each criterion is scored from 0 to its max score, then multiplied by its weight. The total is scaled to 100.
+          Each criterion is scored from 0 to its max score and counts for its weight. Weights must total 100.
         </p>
       </header>
 
@@ -110,21 +110,23 @@ export function RubricEditor({ initialName, initialCriteria, locked = false }: {
 
       <fieldset disabled={locked} className="m-0 min-w-0 border-0 p-0">
 
-      {/* Weighting summary */}
+      {/* Weight budget meter */}
       <div className="card sticky top-16 z-20 mb-6 p-4 lg:top-20">
         <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-          <span className="text-sm font-medium text-ink">Weighting</span>
-          <span className="text-sm text-ink-2">
-            Total <span className="nums font-bold text-ink">{totalPoints}</span> points
-            {totalPoints > 0 && totalPoints !== 100 && <span className="text-ink-3"> → scaled to 100</span>}
+          <span className="text-sm font-medium text-ink">Weight budget</span>
+          <span className="nums text-sm font-bold" style={{ color: sumOk ? "var(--good)" : "var(--bad)" }}>
+            {weightSum}<span className="text-ink-3"> / 100</span>
           </span>
         </div>
         <div className="flex h-2.5 w-full gap-0.5 overflow-hidden rounded-full bg-surface-2">
           {criteria.map((c) => (
-            <div key={c._id} title={`${c.name || "Criterion"} — ${pct(c).toFixed(1)}%`} style={{ width: `${pct(c)}%`, background: "var(--brand)" }} className="h-full first:rounded-l-full" />
+            <div key={c._id} title={`${c.name || "Criterion"} — ${weightOf(c)}%`} style={{ width: `${Math.min(100, Math.max(0, weightOf(c)))}%`, background: over ? "var(--bad)" : "var(--brand)" }} className="h-full first:rounded-l-full" />
           ))}
         </div>
-        {totalPoints <= 0 && <p className="mt-2 text-xs text-bad">Give at least one criterion a weight above 0.</p>}
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          {sumOk ? <span /> : <p className="text-xs text-bad">{over ? "Over budget — reduce weights to total 100." : "Weights must total 100 before saving."}</p>}
+          <button type="button" onClick={weightsFromMax} className="text-xs font-medium text-brand-text hover:underline">Set each weight = its max score</button>
+        </div>
       </div>
 
       <div className="divide-y divide-hair">
@@ -141,22 +143,18 @@ export function RubricEditor({ initialName, initialCriteria, locked = false }: {
               </div>
               <div className="flex items-end gap-3">
                 <label className="text-right">
-                  <span className="mb-1 block text-[11px] font-medium text-ink-3">Weight</span>
-                  <div className="flex items-center gap-1">
-                    <span className="text-sm text-ink-3">×</span>
-                    <input type="number" min={0} max={100} step="any" value={c.mult} onChange={(e) => patch(c._id, { mult: e.target.value })}
-                      className="field nums w-16 py-1 text-right" />
-                  </div>
-                </label>
-                <label className="text-right">
                   <span className="mb-1 block text-[11px] font-medium text-ink-3">Max score</span>
                   <input type="number" min={1} max={100} step={1} value={c.max} onChange={(e) => patch(c._id, { max: e.target.value })}
                     className="field nums w-16 py-1 text-right" />
                 </label>
-                <div className="w-16 pb-1.5 text-right">
-                  <span className="mb-1 block text-[11px] font-medium text-ink-3">Share</span>
-                  <span className="nums text-sm font-semibold text-ink">{pct(c).toFixed(1)}%</span>
-                </div>
+                <label className="text-right">
+                  <span className="mb-1 block text-[11px] font-medium text-ink-3">Weight</span>
+                  <div className="flex items-center gap-1">
+                    <input type="number" min={0} max={100} step={1} value={c.weight} onChange={(e) => patch(c._id, { weight: e.target.value })}
+                      className="field nums w-16 py-1 text-right" />
+                    <span className="text-sm text-ink-3">%</span>
+                  </div>
+                </label>
                 <button onClick={() => remove(c._id)} className="mb-0.5 grid h-8 w-8 place-items-center rounded-lg text-ink-3 hover:bg-surface-2 hover:text-bad" aria-label="Remove criterion">
                   <Icon.close size={16} />
                 </button>

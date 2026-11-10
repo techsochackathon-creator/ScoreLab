@@ -414,24 +414,11 @@ describe("judge remarks (feedback)", () => {
   });
 });
 
-describe("judge final score with a score × multiplier rubric", () => {
-  it("equals the 300-point sheet total scaled to 100", () => {
-    const sheet = [[25, 3, 20], [15, 5, 12], [15, 4, 9], [10, 2, 7], [15, 2, 11], [10, 2, 8], [10, 2, 6]];
-    const scores = sheet.map(([max, x, score]) => ({ score, scaleMax: max, weight: max * x }));
-    const total = sheet.reduce((t, [, x, score]) => t + score * x, 0); // 220 of 300
-    assert.equal(calculateJudgeFinalScore(scores), Math.round((total / 300) * 10000) / 100); // 73.33
-    assert.equal(calculateJudgeFinalScore(sheet.map(([max, x]) => ({ score: max, scaleMax: max, weight: max * x }))), 100);
-  });
-  it("weights totalling 100 behave exactly as before", () => {
-    assert.equal(calculateJudgeFinalScore([{ score: 16, scaleMax: 20, weight: 20 }, { score: 20, scaleMax: 25, weight: 25 }, { score: 55, scaleMax: 55, weight: 55 }]), 91);
-  });
-});
-
 describe("drafts opened before a rubric change", () => {
   let t: ReturnType<typeof makeDb>;
   const NEW = [
-    { id: "n1", name: "Problem & community fit", description: "", weight: 75, scaleMax: 25, order: 0 },
-    { id: "n2", name: "Working product", description: "", weight: 75, scaleMax: 15, order: 1 },
+    { id: "n1", name: "Problem & community fit", description: "", weight: 25, scaleMax: 25, order: 0 },
+    { id: "n2", name: "Working product", description: "", weight: 75, scaleMax: 75, order: 1 },
   ];
   beforeEach(() => {
     t = makeDb();
@@ -444,7 +431,7 @@ describe("drafts opened before a rubric change", () => {
     t.setRubric(NEW);
     const after = await getOrStartEvaluation(t.db, "judgeA", "teamA");
     assert.equal(after.id, before.id, "same evaluation, not a new one");
-    assert.deepEqual(after.criteria.map((c) => [c.criterionId, c.weight, c.scaleMax, c.score]), [["n1", 75, 25, null], ["n2", 75, 15, null]]);
+    assert.deepEqual(after.criteria.map((c) => [c.criterionId, c.weight, c.scaleMax, c.score]), [["n1", 25, 25, null], ["n2", 75, 75, null]]);
   });
 
   it("a draft with any score or remark is never rebuilt", async () => {

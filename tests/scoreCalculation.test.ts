@@ -59,7 +59,7 @@ test("different rubric weights are respected", () => {
   assert.equal(r.finalScore, 84);
 });
 
-test("weights are relative: a total other than 100 is scaled to 100", () => {
+test("invalid weights (do not sum to 100) fail", () => {
   const rubric = [
     { id: "a", weight: 40, scaleMax: 5 },
     { id: "b", weight: 40, scaleMax: 5 },
@@ -68,28 +68,9 @@ test("weights are relative: a total other than 100 is scaled to 100", () => {
     { criterionId: "a", score: 5 },
     { criterionId: "b", score: 5 },
   ]);
-  assert.equal(r.ok, true, r.errors.join(" "));
-  assert.equal(r.finalScore, 100);
-  assert.deepEqual(r.breakdown.map((b) => b.weighted), [50, 50]);
-});
-
-test("score × multiplier sheet (weight = max × multiplier, 300 points) = sheet total scaled to 100", () => {
-  // Max/×: 25×3, 15×5, 15×4, 10×2, 15×2, 10×2, 10×2 → 300 points.
-  const rubric = [[25, 3], [15, 5], [15, 4], [10, 2], [15, 2], [10, 2], [10, 2]].map(([max, x], i) => ({ id: `k${i}`, weight: max * x, scaleMax: max }));
-  const pts = [20, 12, 9, 7, 11, 8, 6];
-  const sheetTotal = pts.reduce((t, p, i) => t + p * (rubric[i].weight / rubric[i].scaleMax), 0); // 60+60+36+14+22+16+12 = 220
-  const r = calculateFinalScore(rubric, pts.map((score, i) => ({ criterionId: `k${i}`, score })));
-  assert.equal(r.ok, true, r.errors.join(" "));
-  assert.equal(r.finalScore, Math.round((sheetTotal / 300) * 1000) / 10); // 73.3
-});
-
-test("invalid weights (zero total, negative, fractional) fail", () => {
-  for (const weights of [[0, 0], [-10, 20], [12.5, 10]]) {
-    const rubric = weights.map((weight, i) => ({ id: `w${i}`, weight, scaleMax: 5 }));
-    const r = calculateFinalScore(rubric, rubric.map((c) => ({ criterionId: c.id, score: 5 })));
-    assert.equal(r.ok, false, String(weights));
-    assert.equal(r.finalScore, null);
-  }
+  assert.equal(r.ok, false);
+  assert.equal(r.finalScore, null);
+  assert.ok(r.errors.some((e) => /sum to 80/.test(e)));
 });
 
 test("missing criterion fails", () => {

@@ -7,7 +7,7 @@ export interface AnchorPoint {
 
 export interface CriterionLike {
   id: string;
-  weight: number; // relative weight (points); shares are weight / Σ weights
+  weight: number; // integer percent
   scaleMax: number;
 }
 
@@ -23,7 +23,7 @@ export interface CriterionBreakdown {
   weight: number;
   /** score / scaleMax, in 0..1 */
   normalized: number;
-  /** normalized × this criterion's share of 100, in 0..share */
+  /** normalized * weight, in 0..weight */
   weighted: number;
 }
 
@@ -35,12 +35,6 @@ export interface ScoreCalculation {
   errors: string[];
 }
 
-/** A criterion's share of 100 given the rubric's total weight. */
-export const share = (weight: number, total: number) => (total > 0 ? (weight / total) * 100 : 0);
-
-/** Share as display text: "25%", "6.7%". */
-export const shareLabel = (weight: number, total: number) => `${Math.round(share(weight, total) * 10) / 10}%`;
-
 const round = (n: number, dp: number) => {
   const f = 10 ** dp;
   return Math.round(n * f) / f;
@@ -51,14 +45,11 @@ const round = (n: number, dp: number) => {
  *
  * The model provides ONLY per-criterion scores; this backend function owns the
  * weighted math. It validates the inputs, then computes:
- *   share_i    = weight_i / Σ weight × 100                (Σ share = 100)
- *   weighted_i = (score_i / scaleMax_i) * share_i         (0..share_i)
+ *   weighted_i = (score_i / scaleMax_i) * weight_i        (0..weight_i)
  *   finalScore = Σ weighted_i                             (0..100)
- * Weights are relative: a rubric whose weights total 100 uses them as percentages;
- * a "score × multiplier" sheet stores weight = max × multiplier (e.g. 300 in all).
  *
  * Validation (returns ok:false with errors, finalScore:null on any failure):
- *  - rubric weights are non-negative whole numbers with a positive total
+ *  - rubric weights sum to exactly 100
  *  - rubric criterion ids are unique
  *  - every criterion has exactly one score (none missing, none duplicated)
  *  - no score references a criterion outside the rubric
@@ -77,10 +68,9 @@ export function calculateFinalScore(
     critById.set(c.id, c);
   }
 
-  // Weights are relative: whole numbers ≥ 0 with a positive total.
+  // Weights must total exactly 100.
   const weightSum = criteria.reduce((a, c) => a + (Number(c.weight) || 0), 0);
-  if (criteria.some((c) => !Number.isInteger(c.weight) || c.weight < 0)) errors.push("Rubric weights must be whole numbers ≥ 0.");
-  if (!(weightSum > 0)) errors.push(`Rubric weights sum to ${weightSum}; they must total more than 0.`);
+  if (weightSum !== 100) errors.push(`Rubric weights sum to ${weightSum}, expected 100.`);
 
   // Group scores by criterion (to catch missing / duplicate / unexpected).
   const scoresById = new Map<string, number[]>();
@@ -125,7 +115,7 @@ export function calculateFinalScore(
       scaleMax: c.scaleMax,
       weight: c.weight,
       normalized: round(normalized, 4),
-      weighted: round(normalized * share(c.weight, weightSum), 2),
+      weighted: round(normalized * c.weight, 2),
     });
   }
 
@@ -134,7 +124,7 @@ export function calculateFinalScore(
   }
 
   const finalScore = round(
-    breakdown.reduce((a, b) => a + (b.score / b.scaleMax) * share(b.weight, weightSum), 0),
+    breakdown.reduce((a, b) => a + (b.score / b.scaleMax) * b.weight, 0),
     1,
   );
   return { ok: true, finalScore, breakdown, errors: [] };

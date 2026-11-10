@@ -74,15 +74,9 @@ export const draftInput = z
 // Pure scoring
 // ---------------------------------------------------------------------------
 
-/**
- * Σ (score / scaleMax) × weight / Σ weight × 100, rounded to 2 dp → 0..100.
- * Weights are relative: with weights totalling 100 this is the plain weighted sum;
- * with weight = max × multiplier it equals Σ score × multiplier scaled to 100.
- */
+/** Σ (score / scaleMax) × weight, rounded to 2 dp. Weights sum to 100, so this is 0..100. */
 export function calculateJudgeFinalScore(scores: { score: number; scaleMax: number; weight: number }[]): number {
-  const weightTotal = scores.reduce((sum, s) => sum + s.weight, 0);
-  if (weightTotal <= 0) return 0;
-  const total = scores.reduce((sum, s) => sum + (s.score / s.scaleMax) * s.weight, 0) / weightTotal * 100;
+  const total = scores.reduce((sum, s) => sum + (s.score / s.scaleMax) * s.weight, 0);
   return Math.round(total * 100) / 100;
 }
 
