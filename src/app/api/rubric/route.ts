@@ -6,14 +6,19 @@ import { getOrCreateRubric } from "@/lib/rubric";
 import { assertRubricEditable, JudgeServiceError } from "@/lib/judges";
 import type { Prisma } from "@prisma/client";
 
-const anchor = z.object({ score: z.number().int().min(1), label: z.string().trim() });
+const anchor = z.object({ score: z.number().int().min(0), label: z.string().trim().max(500) });
 
+/**
+ * weight: relative whole number. Each criterion counts as weight / Σ weights of the
+ * final 0–100 score — percentages when the weights total 100, or max × multiplier
+ * for a "score × weight" sheet. anchors: optional score-band descriptions.
+ */
 const criterion = z.object({
   name: z.string().trim().min(1, "name is required").max(200),
   description: z.string().trim().max(2000).default(""),
-  weight: z.number().int().min(0).max(100),
-  scaleMax: z.number().int().min(2).max(10).default(5),
-  anchors: z.array(anchor).min(1),
+  weight: z.number().int().min(0).max(10000),
+  scaleMax: z.number().int().min(1).max(100).default(5),
+  anchors: z.array(anchor).max(20).default([]),
 });
 
 const rubricSave = z.object({
@@ -32,7 +37,7 @@ export async function GET() {
   return NextResponse.json({ rubric });
 }
 
-/** PUT /api/rubric — replace all criteria. Weights must sum to 100. */
+/** PUT /api/rubric — replace all criteria. Weights are relative and must total more than 0. */
 export async function PUT(req: Request) {
   try {
     await requireOrganizer();
@@ -60,14 +65,15 @@ export async function PUT(req: Request) {
   }
 
   const sum = data.criteria.reduce((s, c) => s + c.weight, 0);
-  if (sum !== 100) {
-    return NextResponse.json({ error: `Weights must sum to 100 (currently ${sum}).` }, { status: 400 });
+  if (sum <= 0) {
+    return NextResponse.json({ error: "Give at least one criterion a weight above 0." }, { status: 400 });
   }
-  // Each criterion needs one anchor per scale point.
+  // Score-band descriptions must sit on the criterion's own scale.
   for (const c of data.criteria) {
-    if (c.anchors.length !== c.scaleMax) {
+    const bad = c.anchors.find((a) => a.score > c.scaleMax);
+    if (bad) {
       return NextResponse.json(
-        { error: `Criterion "${c.name}" needs exactly ${c.scaleMax} anchor(s).` },
+        { error: `Criterion "${c.name}": a score band starts at ${bad.score}, above the max score ${c.scaleMax}.` },
         { status: 400 },
       );
     }
@@ -87,7 +93,7 @@ export async function PUT(req: Request) {
             description: c.description,
             weight: c.weight,
             scaleMax: c.scaleMax,
-            anchors: c.anchors as unknown as Prisma.InputJsonValue,
+            anchors: [...c.anchors].filter((a) => a.label).sort((x, y) => x.score - y.score) as unknown as Prisma.InputJsonValue,
             order: i,
           })),
         },

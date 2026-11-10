@@ -86,7 +86,8 @@ test("the model cannot supply a final/weighted score", () => {
   assert.ok(codes(r).includes("FORBIDDEN_FINAL_SCORE"));
 });
 
-test("rubric weights must total 100%", () => {
-  assert.equal(validateRubricWeights([{ weight: 20 }, { weight: 30 }]).valid, false);
+test("rubric weights are relative whole numbers with a positive total", () => {
+  assert.equal(validateRubricWeights([{ weight: 20 }, { weight: 30 }]).valid, true);
   assert.equal(validateRubricWeights([{ weight: 50 }, { weight: 50 }]).valid, true);
+  assert.equal(validateRubricWeights([{ weight: 0 }]).valid, false);
 });

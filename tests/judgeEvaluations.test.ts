@@ -52,6 +52,7 @@ function makeDb() {
   const evals: MEval[] = [];
   const scores: MScore[] = [];
   let finalized = false;
+  let rubricCriteria: { id: string; name: string; description: string; weight: number; scaleMax: number; order: number }[] = CRITERIA;
   type EvalWhere = { id: string; judgeId: string; status: string };
   const matchEval = (e: MEval, w: EvalWhere) => e.id === w.id && e.judgeId === w.judgeId && e.status === w.status;
   const withScores = (e: MEval) => ({ ...e, scores: scores.filter((s) => s.evaluationId === e.id).map((s) => ({ ...s })) });
@@ -96,10 +97,23 @@ function makeDb() {
         hits.forEach((s) => Object.assign(s, data));
         return { count: hits.length };
       }),
+      deleteMany: ({ where }: { where: { evaluation: { is: EvalWhere }; score: null; comment: null } }) => lazy(async () => {
+        const hit = (s: MScore & { comment?: string | null }) =>
+          matchEval(evals.find((e) => e.id === s.evaluationId)!, where.evaluation.is) && s.score === null && !s.comment;
+        const before = scores.length;
+        scores.splice(0, scores.length, ...scores.filter((s) => !hit(s)));
+        return { count: before - scores.length };
+      }),
+      createMany: ({ data }: { data: Omit<MScore, "id" | "score">[] }) => lazy(async () => {
+        for (const d of data) {
+          if (!scores.some((s) => s.evaluationId === d.evaluationId && s.criterionId === d.criterionId)) scores.push({ id: id("score"), score: null, ...d });
+        }
+        return { count: data.length };
+      }),
     },
     resultsPublication: { findFirst: async () => (finalized ? { id: "official" } : null) },
     rubric: {
-      findFirst: async () => ({ id: "r1", name: "Rubric", criteria: CRITERIA }),
+      findFirst: async () => ({ id: "r1", name: "Rubric", criteria: rubricCriteria }),
     },
     // Batch transaction, all-or-nothing like Postgres: restore state if any op fails.
     $transaction: async (ops: Promise<unknown>[]) => {
@@ -120,7 +134,8 @@ function makeDb() {
   };
 
   const finalize = () => { finalized = true; };
-  return { db: db as unknown as JudgeEvalDb, assignments, evals, scores, finalize };
+  const setRubric = (c: typeof rubricCriteria) => { rubricCriteria = c; };
+  return { db: db as unknown as JudgeEvalDb, assignments, evals, scores, finalize, setRubric };
 }
 
 const FULL = [
@@ -396,5 +411,58 @@ describe("judge remarks (feedback)", () => {
     await assert.rejects(saveDraft(t.db, "judgeA", ev.id, { scores: [], overallComment: "x".repeat(5001) }));
     const ok = await saveDraft(t.db, "judgeA", ev.id, { scores: [{ criterionId: "c1", score: 1, comment: "x".repeat(2000) }] });
     assert.equal(crit(ok, "c1")!.length, 2000);
+  });
+});
+
+describe("judge final score with a score × multiplier rubric", () => {
+  it("equals the 300-point sheet total scaled to 100", () => {
+    const sheet = [[25, 3, 20], [15, 5, 12], [15, 4, 9], [10, 2, 7], [15, 2, 11], [10, 2, 8], [10, 2, 6]];
+    const scores = sheet.map(([max, x, score]) => ({ score, scaleMax: max, weight: max * x }));
+    const total = sheet.reduce((t, [, x, score]) => t + score * x, 0); // 220 of 300
+    assert.equal(calculateJudgeFinalScore(scores), Math.round((total / 300) * 10000) / 100); // 73.33
+    assert.equal(calculateJudgeFinalScore(sheet.map(([max, x]) => ({ score: max, scaleMax: max, weight: max * x }))), 100);
+  });
+  it("weights totalling 100 behave exactly as before", () => {
+    assert.equal(calculateJudgeFinalScore([{ score: 16, scaleMax: 20, weight: 20 }, { score: 20, scaleMax: 25, weight: 25 }, { score: 55, scaleMax: 55, weight: 55 }]), 91);
+  });
+});
+
+describe("drafts opened before a rubric change", () => {
+  let t: ReturnType<typeof makeDb>;
+  const NEW = [
+    { id: "n1", name: "Problem & community fit", description: "", weight: 75, scaleMax: 25, order: 0 },
+    { id: "n2", name: "Working product", description: "", weight: 75, scaleMax: 15, order: 1 },
+  ];
+  beforeEach(() => {
+    t = makeDb();
+    t.assignments.push({ judgeId: "judgeA", teamId: "teamA" });
+  });
+
+  it("an untouched draft is rebuilt on the current rubric when reopened", async () => {
+    const before = await getOrStartEvaluation(t.db, "judgeA", "teamA");
+    assert.equal(before.criteria.length, 6);
+    t.setRubric(NEW);
+    const after = await getOrStartEvaluation(t.db, "judgeA", "teamA");
+    assert.equal(after.id, before.id, "same evaluation, not a new one");
+    assert.deepEqual(after.criteria.map((c) => [c.criterionId, c.weight, c.scaleMax, c.score]), [["n1", 75, 25, null], ["n2", 75, 15, null]]);
+  });
+
+  it("a draft with any score or remark is never rebuilt", async () => {
+    const ev = await getOrStartEvaluation(t.db, "judgeA", "teamA");
+    await saveDraft(t.db, "judgeA", ev.id, { scores: [{ criterionId: "c1", score: null, comment: "note" }] });
+    t.setRubric(NEW);
+    const after = await getOrStartEvaluation(t.db, "judgeA", "teamA");
+    assert.equal(after.criteria.length, 6);
+    assert.equal(after.criteria.find((c) => c.criterionId === "c1")!.comment, "note");
+  });
+
+  it("a submitted evaluation is never rebuilt", async () => {
+    const ev = await getOrStartEvaluation(t.db, "judgeA", "teamA");
+    await saveDraft(t.db, "judgeA", ev.id, { scores: FULL });
+    await submitEvaluation(t.db, "judgeA", ev.id);
+    t.setRubric(NEW);
+    const after = await getOrStartEvaluation(t.db, "judgeA", "teamA");
+    assert.equal(after.status, "SUBMITTED");
+    assert.equal(after.criteria.length, 6);
   });
 });

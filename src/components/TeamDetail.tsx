@@ -6,6 +6,7 @@ import { StatusBadge } from "@/components/ui/misc";
 import { ProgressBar, bandVar, totalBandVar } from "@/components/ui/ProgressBar";
 import { RadarChart } from "@/components/charts/Charts";
 import { Icon } from "@/components/ui/icons";
+import { shareLabel } from "@/lib/scoring";
 
 export interface TeamDetailData {
   id: string;
@@ -165,7 +166,7 @@ export function TeamDetail({ data }: { data: TeamDetailData }) {
                     <div className="flex items-center gap-2">
                       <span className="mono grid h-7 w-7 place-items-center rounded-md text-sm font-bold text-[#0b1120]" style={{ background: bandVar(s.score, s.scaleMax) }}>{s.score}</span>
                       <span className="mono text-xs text-ink-3">of {s.scaleMax}</span>
-                      <span className="chip mono">weight {s.weight}%</span>
+                      <span className="chip mono">weight {shareLabel(s.weight, data.scores.reduce((t, x) => t + x.weight, 0))}</span>
                     </div>
                   </div>
                   <ProgressBar value={s.score} max={s.scaleMax} color={bandVar(s.score, s.scaleMax)} className="mt-3" />

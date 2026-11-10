@@ -6,6 +6,7 @@ import { ScoreRing } from "@/components/ui/ScoreRing";
 import { ProgressBar, bandVar, totalBandVar } from "@/components/ui/ProgressBar";
 import { ReEvaluateButton } from "@/components/ReEvaluateButton";
 import { Icon } from "@/components/ui/icons";
+import { shareLabel } from "@/lib/scoring";
 
 export const dynamic = "force-dynamic";
 const fmt = (n: number | null) => (n == null ? "—" : n.toFixed(1));
@@ -145,7 +146,7 @@ export default async function SubmissionDetailPage({ params }: { params: Promise
                 <div className="flex items-center gap-2">
                   <span className="mono grid h-7 w-7 place-items-center rounded-md text-sm font-bold text-[#0b1120]" style={{ background: bandVar(s.score, s.criterion.scaleMax) }}>{s.score}</span>
                   <span className="mono text-xs text-ink-3">of {s.criterion.scaleMax}</span>
-                  <span className="chip mono">weight {s.criterion.weight}%</span>
+                  <span className="chip mono">weight {shareLabel(s.criterion.weight, submission.scores.reduce((t, x) => t + x.criterion.weight, 0))}</span>
                 </div>
               </div>
               <ProgressBar value={s.score} max={s.criterion.scaleMax} color={bandVar(s.score, s.criterion.scaleMax)} className="mt-3" />

@@ -113,10 +113,10 @@ export async function runEvaluation(submissionId: string): Promise<void> {
       })),
     });
 
-    // (Req #9) Rubric weights must total 100%.
+    // (Req #9) Rubric weights must be whole numbers ≥ 0 with a positive total.
     const weightCheck = validateRubricWeights(rubric.criteria);
     if (!weightCheck.valid) {
-      const error = `Rubric weights total ${weightCheck.sum}%, but must total 100%. Fix the rubric before evaluating.`;
+      const error = `Rubric weights are invalid (total ${weightCheck.sum}). Fix the rubric before evaluating.`;
       await mirror(submissionId, { status: "REVIEW_REQUIRED", flags: ["INVALID_RUBRIC"], error });
       await recordRun("REVIEW_REQUIRED", { flags: ["INVALID_RUBRIC"], error });
       await cleanupFailedRuns(submission!.teamId);

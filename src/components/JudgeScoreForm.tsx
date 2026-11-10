@@ -24,6 +24,17 @@ export interface ScoreFormEvaluation {
   }[];
 }
 
+/**
+ * Weight label. Weights are relative: a rubric totalling 100 shows "Weight 20%";
+ * a score × multiplier sheet (weight = max × multiplier) shows "Weight ×3 (25%)".
+ */
+function weightLabel(weight: number, scaleMax: number, total: number): string {
+  const pct = total > 0 ? Math.round((weight / total) * 1000) / 10 : 0;
+  if (total === 100) return `Weight ${pct}%`;
+  const mult = weight / scaleMax;
+  return Number.isInteger(mult) ? `Weight ×${mult} (${pct}%)` : `Weight ${pct}%`;
+}
+
 const COMMENT_MAX = 2000;
 const OVERALL_MAX = 5000;
 
@@ -55,10 +66,12 @@ export function JudgeScoreForm({ evaluation, locked = false }: { evaluation: Sco
   const hasErrors = Object.values(errors).some(Boolean);
   const filled = evaluation.criteria.filter((c) => (values[c.criterionId] ?? "").trim() !== "").length;
   const complete = filled === evaluation.criteria.length;
-  const runningTotal = evaluation.criteria.reduce((sum, c) => {
+  // Same formula as the server (calculateJudgeFinalScore): weights are relative, total scaled to 100.
+  const weightTotal = evaluation.criteria.reduce((sum, c) => sum + c.weight, 0);
+  const runningTotal = weightTotal > 0 ? evaluation.criteria.reduce((sum, c) => {
     const raw = values[c.criterionId] ?? "";
     return raw.trim() === "" || errors[c.criterionId] ? sum : sum + (Number(raw) / c.scaleMax) * c.weight;
-  }, 0);
+  }, 0) / weightTotal * 100 : 0;
 
   async function save(): Promise<boolean> {
     const scores = evaluation.criteria.map((c) => {
@@ -166,8 +179,8 @@ export function JudgeScoreForm({ evaluation, locked = false }: { evaluation: Sco
                   <div className="min-w-0 flex-1">
                     <label htmlFor={inputId} className="card-title block">{c.criterionName}</label>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      <span className="chip nums">Scale 0–{c.scaleMax}</span>
-                      <span className="chip nums">Weight {c.weight}%</span>
+                      <span className="chip nums">Score 0–{c.scaleMax}</span>
+                      <span className="chip nums">{weightLabel(c.weight, c.scaleMax, weightTotal)}</span>
                       {!scored && !readOnly && <span className="text-xs text-ink-3">Not scored</span>}
                     </div>
                     {c.description && <p className="mt-2.5 max-w-prose text-sm leading-relaxed text-ink-2">{c.description}</p>}

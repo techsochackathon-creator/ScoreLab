@@ -74,9 +74,15 @@ export const draftInput = z
 // Pure scoring
 // ---------------------------------------------------------------------------
 
-/** Σ (score / scaleMax) × weight, rounded to 2 dp. Weights sum to 100, so this is 0..100. */
+/**
+ * Σ (score / scaleMax) × weight / Σ weight × 100, rounded to 2 dp → 0..100.
+ * Weights are relative: with weights totalling 100 this is the plain weighted sum;
+ * with weight = max × multiplier it equals Σ score × multiplier scaled to 100.
+ */
 export function calculateJudgeFinalScore(scores: { score: number; scaleMax: number; weight: number }[]): number {
-  const total = scores.reduce((sum, s) => sum + (s.score / s.scaleMax) * s.weight, 0);
+  const weightTotal = scores.reduce((sum, s) => sum + s.weight, 0);
+  if (weightTotal <= 0) return 0;
+  const total = scores.reduce((sum, s) => sum + (s.score / s.scaleMax) * s.weight, 0) / weightTotal * 100;
   return Math.round(total * 100) / 100;
 }
 
@@ -200,12 +206,27 @@ export async function getOrStartEvaluation(db: JudgeEvalDb, judgeId: string, tea
     where: { judgeId_teamId: { judgeId, teamId } },
     include: { scores: true },
   });
-  if (existing) return toView(db, existing);
+  if (existing && !(await isStaleEmptyDraft(db, existing))) return toView(db, existing);
   await assertJudgingOpen(db); // no new evaluations once judging is finalized
 
   const rubric = await db.rubric.findFirst({ include: { criteria: { orderBy: { order: "asc" } } } });
   if (!rubric || rubric.criteria.length === 0) {
     throw new JudgeServiceError(409, "The rubric has no criteria yet. Ask the organizer to set it up.");
+  }
+
+  // An untouched draft opened before the rubric changed: rebuild it on the current rubric.
+  // Conditional on it still being this judge's DRAFT with nothing entered, so it can't wipe work.
+  if (existing) {
+    const empty = { evaluation: { is: { id: existing.id, judgeId, status: "DRAFT" as const } }, score: null, comment: null };
+    await whileJudgingOpen(db, [
+      db.judgeCriterionScore.deleteMany({ where: empty }),
+      db.judgeCriterionScore.createMany({
+        data: rubric.criteria.map((c) => ({ evaluationId: existing.id, criterionId: c.id, criterionName: c.name, weight: c.weight, scaleMax: c.scaleMax })),
+        skipDuplicates: true,
+      }),
+    ]);
+    const rebuilt = await db.judgeEvaluation.findUnique({ where: { judgeId_teamId: { judgeId, teamId } }, include: { scores: true } });
+    return toView(db, rebuilt!);
   }
 
   try {
@@ -319,6 +340,19 @@ async function loadOwn(db: JudgeEvalDb, judgeId: string, evaluationId: string, o
   await requireAssignedTeam(db, judgeId, ev.teamId);
   if (ev.status === "SUBMITTED" && !opts.allowSubmitted) throw new JudgeServiceError(409, SUBMITTED_MSG);
   return ev;
+}
+
+/**
+ * True for a DRAFT built from an older rubric (its criteria no longer match the current
+ * ones) on which the judge has entered nothing — no score, remark or overall feedback.
+ */
+async function isStaleEmptyDraft(db: JudgeEvalDb, ev: EvalWithScores): Promise<boolean> {
+  if (ev.status !== "DRAFT" || ev.overallComment) return false;
+  if (ev.scores.some((s) => s.score !== null || s.comment)) return false;
+  const rubric = await db.rubric.findFirst({ select: { criteria: { select: { id: true } } } });
+  const current = new Set((rubric?.criteria ?? []).map((c) => c.id));
+  if (current.size === 0) return false;
+  return ev.scores.length !== current.size || ev.scores.some((s) => !current.has(s.criterionId));
 }
 
 /** Scores in current rubric order, with the current criterion description when it still exists. */

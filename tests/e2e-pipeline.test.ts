@@ -643,10 +643,13 @@ describe("Scenario 10: Malformed AI response", () => {
 // SCORING ENGINE TESTS
 // ===========================================================================================
 describe("Backend score calculation", () => {
-  it("rubric weights must sum to 100", () => {
-    const bad = [{ weight: 25 }, { weight: 25 }, { weight: 25 }]; // 75
-    assert.equal(validateRubricWeights(bad).valid, false);
-    assert.equal(validateRubricWeights(bad).sum, 75);
+  it("rubric weights must be whole numbers ≥ 0 with a positive total (relative weights)", () => {
+    const relative = [{ weight: 25 }, { weight: 25 }, { weight: 25 }]; // 75 — fine, each counts 1/3
+    assert.equal(validateRubricWeights(relative).valid, true);
+    assert.equal(validateRubricWeights(relative).sum, 75);
+    assert.equal(validateRubricWeights([{ weight: 0 }, { weight: 0 }]).valid, false);
+    assert.equal(validateRubricWeights([{ weight: -5 }, { weight: 10 }]).valid, false);
+    assert.equal(validateRubricWeights([{ weight: 2.5 }, { weight: 10 }]).valid, false);
 
     const good = [{ weight: 20 }, { weight: 20 }, { weight: 20 }, { weight: 20 }, { weight: 20 }];
     assert.equal(validateRubricWeights(good).valid, true);
